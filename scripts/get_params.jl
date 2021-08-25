@@ -1,10 +1,9 @@
 function get_params(
-    isborder::BitMatrix,
-    sigmal::Float64,
+    isinside::BitMatrix,
+    sigma::Float64,
     dataname::String,
     savename::String,
 )
-    println("Computing grid parameters, it might take a while...")
     data = h5read(dataname, "/")
     mg = vec(data["gen_inertia"])
     dg = vec(data["gen_prim_ctrl"])
@@ -82,15 +81,15 @@ function get_params(
                         # if close enough to the line 
                         if(dist < 4*sigma)
                             f = exp(-dist^2/2/sigma^2)/sigma/sqrt(2*pi)
-                            bx[i,j] += bline[l] * abs(cos(phi)) * f
+                            bx[i,j] += bline[l] * abs(cos(phi)) * f * dx^2 / 1000 # 1000 is a temporary patch
                         end
                     # else close enough to an end of the line 
                     elseif(dist1_x < 4*sigma)
                         f = exp(-dist1_x/2/sigma^2)/sigma/sqrt(2*pi)
-                        bx[i,j] += bline[l] * abs(cos(phi)) * f
+                        bx[i,j] += bline[l] * abs(cos(phi)) * f * dx^2 / 1000 # 1000 is a temporary patch
                     elseif(dist2_x < 4*sigma)
                         f = exp(-dist2_x/2/sigma^2)/sigma/sqrt(2*pi)
-                        bx[i,j] += bline[l] * abs(cos(phi)) * f
+                        bx[i,j] += bline[l] * abs(cos(phi)) * f * dx^2 / 1000 # 1000 is a temporary patch
                     end
                 end
                 # if the line by(i,j) is the grid
@@ -99,45 +98,39 @@ function get_params(
                         dist = abs(beta_y) * sqrt(dx^2 + dy^2)
                         if(dist < 4*sigma)
                             f = exp(-dist^2/2/sigma^2)/sigma/sqrt(2*pi)
-                            by[i,j] += bline[l] * abs(sin(phi)) * f
+                            by[i,j] += bline[l] * abs(sin(phi)) * f * dx^2 / 1000 # 1000 is a temporary patch
                         end
                     elseif(dist1_y < 4*sigma)
                         f = exp(-dist1_y/2/sigma^2)/sigma/sqrt(2*pi)
-                        by[i,j] += bline[l] * abs(sin(phi)) * f
+                        by[i,j] += bline[l] * abs(sin(phi)) * f * dx^2 / 1000 # 1000 is a temporary patch
                     elseif(dist2_y < 4*sigma)
                         f = exp(-dist2_y/2/sigma^2)/sigma/sqrt(2*pi)
-                        by[i,j] += bline[l] * abs(sin(phi)) * f
+                        by[i,j] += bline[l] * abs(sin(phi)) * f * dx^2 / 1000 # 1000 is a temporary patch
                     end
                 end
             end
         end
     end
 
-    m[.!isgrid] .= 0
-    d[.!isgrid] .= 0
-    pl[.!isgrid] .= 0
-    pg[.!isgrid] .= 0
-    mm = trapz((yrange, xrange), m)
-    dd = trapz((yrange, xrange), d)
-    ppl = trapz((yrange, xrange), pl)
-    ppg = trapz((yrange, xrange), pg)
-    m = sum(mg) .* m ./ mm
-    d = (sum(dg) + sum(dl)) .* d ./ dd
-    pl = sum(dem) .* pl ./ ppl
-    pg = sum(gen) .* pg ./ ppg
-    mm = trapz((yrange, xrange), m)
-    dd = trapz((yrange, xrange), d)
-    ppl = trapz((yrange, xrange), pl)
-    ppg = trapz((yrange, xrange), pg)
-    println("Numeric inertia: ", mm)
-    println("Actual inertia: ", sum(mg))
-    println("Numeric damping: ", dd)
-    println("Actual damping: ", sum(dg) + sum(dl))
-    println("Numeric power dem: ", ppl)
-    println("Actual power dem: ", sum(dem))
-    println("Numeric power gen: ", ppg)
-    println("Actual power gen: ", sum(gen))
 
+    # due to how the boundary is treated in the code, interia, damping or
+    # power injection on boundary won't be taken into account
+    m[.!isinside] .= 0
+    d[.!isinside] .= 0
+    pl[.!isinside] .= 0
+    pg[.!isinside] .= 0
+    
+    
+    # ensure that the integrals of the different quantities over
+    # the medium is equivalent to their sum over the discrete model
+
+    m = sum(mg) .* m ./ trapz((yrange, xrange), m)
+    d = (sum(dg) + sum(dl)) .* d ./ trapz((yrange, xrange), d)
+    pl = sum(dem) .* pl ./ trapz((yrange, xrange), pl)
+    pg = sum(gen) .* pg ./ trapz((yrange, xrange), pg)
+
+
+    # save the quantities
     fid = h5open(savename, "w")
     write(fid, "bx", bx)
     write(fid, "by", by)
@@ -149,23 +142,20 @@ function get_params(
     write(fid, "yrange", yrange)
     close(fid)
 
-    isinside = isgrid .& .!isborder
-    pl[isinside] = sum(pl) .* pl[isinside] ./ sum(pl[isinside])
-    pg[isinside] = sum(pg) .* pg[isinside] ./ sum(pg[isinside])
-    pl[.!isinside] .= 0
-    pg[.!isinside] .= 0
-    p = pl - pg
+    # ensure that the integral of the power injection is 0, i.e
+    # that generation match the demand.
+    p = pg - pl 
     p[isinside] = p[isinside] .- sum(p[isinside]) / sum(isinside)
 
     return bx, by, p, m, d
 end
 
 function norm_dist(a::Array{Float64,1}, b::Array{Float64,1}, sigma::Float64)
-    return exp(-((a[1] - b[1])^2 + (a[2] - b[2])^2) / 2 / sigma^2) / 2*pi / sigma 
+    return exp(-((a[1] - b[1])^2 + (a[2] - b[2])^2) / 2 / sigma^2) / (2*pi) / sigma^2
 end
 
 
-function get_params(filename::String)
+function get_params(isinside::BitMatrix, filename::String)
     data = h5read(filename, "/")
     m = data["m"]
     d = data["d"]
@@ -173,12 +163,8 @@ function get_params(filename::String)
     by = data["by"]
     pl = data["pl"]
     pg = data["pg"]
-    isinside = isgrid .& .!isborder
-    pl[isinside] = sum(pl) .* pl[isinside] ./ sum(pl[isinside])
-    pg[isinside] = sum(pg) .* pg[isinside] ./ sum(pg[isinside])
-    pl[.!isinside] .= 0
-    pg[.!isinside] .= 0
-    p = pl - pg
+
+    p = pg - pl
     p[isinside] = p[isinside] .- sum(p[isinside]) / sum(isinside)
     return bx, by, p, m, d
 end

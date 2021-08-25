@@ -19,17 +19,20 @@ function get_grid(border::Array{Float64,2}, dx::Float64)
     end
 
     # boundary normal vector
-    n = Array{Float64,2}(reshape([],0,4)) # defined as coordy coordx nx ny
+    n = Array{Float64,2}(reshape([],0,4)) # defined as coordy coordx ny nx
     for j=2:Nx-1
        for i=2:Ny-1
             if((sum(isgrid[i+1,j] + isgrid[i-1,j] + isgrid[i,j+1] + isgrid[i,j-1]) < 4) & isgrid[i,j])
                 isborder[i,j] = 1
                 nx = isgrid[i,j-1]-isgrid[i,j+1]
                 ny = isgrid[i-1,j]-isgrid[i+1,j]
-                n = vcat(n,Array{Float64,2}([i j nx ny]))
+                n = vcat(n,Array{Float64,2}([i j ny nx]))
             end
        end
     end
-    return Nx, Ny, xrange, yrange, isgrid, isborder, n
+    
+    isinside = isgrid .& .!isborder
+    
+    return Nx, Ny, xrange, yrange, isinside, isborder, n
 end
 
