@@ -51,7 +51,8 @@ function import_border(filename)
     return b
 end
 
-function do_plot(isgrid::BitMatrix, values::Array{Float64,2})
-    values[.!isgrid] .= NaN
-    contour(values,fill=true)
+function do_plot(isin::BitMatrix, values::Array{Float64,2})
+    temp = copy(values)
+    temp[.!isin] .= NaN
+    contour(temp,fill=true)
 end
