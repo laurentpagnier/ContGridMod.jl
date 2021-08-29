@@ -20,10 +20,14 @@ function get_grid(border::Array{Float64,2}, dx::Float64)
     n = Array{Float64,2}(reshape([],0,4)) # defined as coordy coordx ny nx
     for j=2:Nx-1
        for i=2:Ny-1
-                nx = isinside[i,j-1] - isinside[i,j+1]
-                ny = isinside[i-1,j] - isinside[i+1,j]
+            nx = isinside[i, j-1] - isinside[i, j+1]
+            ny = isinside[i-1, j] - isinside[i+1, j]
             if((nx^2 + ny^2) > 0 && isinside[i,j] == false)
-                isborder[i,j] = true
+                #if(nx^2 == 1 && ny^2 == 1)
+                #    nx /= sqrt(2)
+                #    ny /= sqrt(2)
+                #end
+                isborder[i, j] = true
                 n = vcat(n,Array{Float64,2}([i j ny nx]))
             end
        end

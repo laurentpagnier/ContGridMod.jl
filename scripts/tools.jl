@@ -28,7 +28,7 @@ function alberts_projection(coord::Array{Float64,2}, lon0::Float64, lat0::Float6
     return [x y]
 end
     
-function import_border(filename)
+function import_border(filename::String)
     data = JSON.parsefile(filename)
     N = size(data["border"],1)
     
