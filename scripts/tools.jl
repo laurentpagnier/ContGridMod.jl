@@ -56,3 +56,19 @@ function do_plot(isin::BitMatrix, values::Array{Float64,2})
     temp[.!isin] .= NaN
     contour(temp,fill=true)
 end
+
+function get_discrete_values(yrange::Array{Float64,1}, xrange::Array{Float64,1},
+    cont_values::Array{Float64,2}, coord::Array{Float64, 2})
+    x = repeat(reshape(xrange,1,Nx),Ny,1)
+    y = repeat(reshape(yrange,Ny,1),1,Nx)
+    disc_values = zeros(size(coord, 1), 1)
+    for i = 1:size(coord, 1)
+        # TODO
+        dx = xrange .- coord[i, 1]
+        dy = yrange .- coord[i, 2]
+        dist = dx.^2 + dy.^2
+        factor = exp.(-dist) / sum(exp.(-dist))
+        v
+    end
+end
+    
