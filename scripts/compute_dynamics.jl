@@ -25,13 +25,14 @@ dp = local_disturbance(isinside, xrange, yrange, location, dP, sigma)
 do_plot(isinside, dp)
 
 # perform a dynamical simulation
-interval = 200
-dt = 0.0001
-Ndt = 20000
+find_time_step(isinside, m, d, p, bx, by, Float64(dx))
 
-println(maximum(u)*dt^2/dx^2)
+interval = 500
+dt = 0.00001
+Ndt = 200000
 
-#gamma = 100*d ./ m
+
+gamma = d ./ m
 #m = m ./10
 
 omegas = zeros(Ny,Nx,1 + Int64(ceil(Ndt/interval)))
@@ -50,16 +51,24 @@ else
 end
 
 ts = zeros(1 + Int64(ceil(Ndt/interval)))
-chi = 1 .+ gamma*dt/2
+chi = 1.0 .+ gamma*dt / 2.0
+
+bij = zeros(Ny, Nx)
+Threads.@threads for i in 2:Ny-1
+    Threads.@threads for j in 2:Nx-1
+        if(isinside[i,j])
+            bij = (by[i-1,j] + by[i,j] + bx[i,j] + bx[i,j+1])
+        end
+    end
+end   
 
 @time begin
     for t in 1:Ndt
         Threads.@threads for i in 2:Ny-1
             Threads.@threads for j in 2:Nx-1
                 if(isinside[i,j])
-                    bij = (by[i-1,j] + by[i,j] + bx[i,j] + bx[i,j+1])
-                    th_new[i,j] = (2 - bij / m[i,j] * dt^2 / dx^2) / chi[i,j] * th[i,j] + 
-                        (gamma[i,j] * dt/2 - 1) /chi[i,j] * th_old[i,j] + 
+                    th_new[i,j] = (2.0 - bij[i,j] / m[i,j] * dt^2 / dx^2) / chi[i,j] * th[i,j] + 
+                        (gamma[i,j] * dt / 2.0 - 1.0) /chi[i,j] * th_old[i,j] + 
                         dt^2 / dx^2 / chi[i,j] / m[i,j] * 
                         (by[i,j] * th[i+1,j] + by[i-1,j] * th[i-1,j] +
                         bx[i,j+1] * th[i,j+1] + bx[i,j] * th[i,j-1]) +
@@ -69,32 +78,38 @@ chi = 1 .+ gamma*dt/2
         end   
 
         # impose boundary condition
-        Threads.@threads for k in 1:size(n,1)
-            i = Int64(n[k,1])
-            j = Int64(n[k,2])
-            nx = n[k,4]
-            ny = n[k,3]
+        Threads.@threads for k in 1:size(n, 1)
+            i = Int64(n[k, 1])
+            j = Int64(n[k, 2])
+            nx = n[k, 4]
+            ny = n[k, 3]
             if(nx == 1)
-                th_new[i,j] = th_new[i,j-2]
-            else(nx == -1)
-                th_new[i,j] = th_new[i,j+2]
+                th_new[i, j] = th_new[i, j-2]
+            elseif(nx == -1)
+                th_new[i, j] = th_new[i, j+2]
             end
             if(ny == 1)
-                th_new[i,j] = th_new[i-2,j]
-            else(ny == -1)
-                th_new[i,j] = th_new[i+2,j]
+                th_new[i, j] = th_new[i-2, j]
+            elseif(ny == -1)
+                th_new[i, j] = th_new[i+2, j]
             end
         end
         
         if(mod(t,interval) == 0)
             println("NIter: ", t)
-            omegas[:,:,Int64(t/interval) + 1] = (th_new-th) / dt
+            omegas[:,:,Int64(t/interval) + 1] = (th_new - th) / dt
             thetas[:,:,Int64(t/interval) + 1] = th_new
             ts[Int64(t/interval) + 1] = t*dt
         end
-        th_old = copy(th)
-        th = copy(th_new)
+        global th_old = copy(th)
+        global th = copy(th_new)
     end
 end
 
+
+fid = h5open("../numerics/sim_" * string(dx) * ".h5", "w")
+write(fid, "omega", omegas)
+write(fid, "theta", thetas)
+write(fid, "dt", dt)
+close(fid)
 

@@ -51,13 +51,19 @@ function import_border(filename::String)
     return b
 end
 
+function do_plot(isin::BitMatrix, values::Array{Float64,2}, xlim::Tuple{Int64, Int64}, ylim::Tuple{Int64, Int64})
+    temp = copy(values)
+    temp[.!isin] .= NaN
+    return contour(temp,fill=true, xlim=xlim, ylim=ylim)
+end
+
 function do_plot(isin::BitMatrix, values::Array{Float64,2})
     temp = copy(values)
     temp[.!isin] .= NaN
-    contour(temp,fill=true)
+    return contour(temp,fill=true)
 end
 
-function get_discrete_values(yrange::Array{Float64,1}, xrange::Array{Float64,1},
+function get_discrete_values(rangeyrange::Array{Float64,1}, xrange::Array{Float64,1},
     cont_values::Array{Float64,2}, coord::Array{Float64, 2})
     x = repeat(reshape(xrange,1,Nx),Ny,1)
     y = repeat(reshape(yrange,Ny,1),1,Nx)
@@ -66,9 +72,23 @@ function get_discrete_values(yrange::Array{Float64,1}, xrange::Array{Float64,1},
         # TODO
         dx = xrange .- coord[i, 1]
         dy = yrange .- coord[i, 2]
-        dist = dx.^2 + dy.^2
+        dist = sqrt.(dx.^2 + dy.^2)
         factor = exp.(-dist) / sum(exp.(-dist))
         v
     end
 end
     
+function find_time_step(isin::BitMatrix, m::Array{Float64,2}, d::Array{Float64,2}, p::Array{Float64,2},
+    bx::Array{Float64,2}, by::Array{Float64,2}, dx::Float64, alpha=0.1)
+    Nx = size(m,2)
+    Ny = size(m,1)
+    bij = zeros(size(m))
+    for i = 2:Ny-2
+        for j = 2:Nx-2
+            bij[i,j] = bx[i,j] + bx[i,j+1] + by[i-1,j] + by[i,j]
+        end
+    end
+    gamma = d ./ m
+    println(alpha*dx^2*minimum(m[isin] ./ bij[isin]))
+    println(alpha*minimum(d[isin] ./ abs.(p[isin])))
+end

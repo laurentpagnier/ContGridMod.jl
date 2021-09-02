@@ -8,10 +8,10 @@ clear:
 	rm numerics/*
 grid: num
 	cd scripts;\
-	julia -t 8 compute_grid_params.jl
+	julia -t $$(nproc) compute_grid_params.jl
 stable:
 	cd scripts;\
-	julia -t 8 compute_stable_sol.jl
+	julia -t $$(nproc) compute_stable_sol.jl
 dyn:
 	cd scripts;\
-	julia -t 8 compute_dynamics.jl
+	julia -t $$(nproc) compute_dynamics.jl

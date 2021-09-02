@@ -7,14 +7,14 @@ include("../scripts/get_grid.jl")
 include("../scripts/get_params.jl")
 
 border = import_border("../data/border.json")
-for dx = [40, 20, 10]
-#for dx = [40]
+#for dx = [40, 20, 10]
+for dx = [20]
 Nx, Ny, xrange, yrange, isinside, isborder, n = get_grid(border, Float64(dx))
 bx, by, p, m, d = get_params(isinside, "../numerics/grid_params_" * string(dx) * ".h5")
 
 
 interval = 1000
-Niter = 40000
+Niter = 240000
 th = zeros(Ny, Nx)
 
 @time begin

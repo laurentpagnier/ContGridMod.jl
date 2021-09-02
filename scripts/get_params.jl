@@ -7,7 +7,7 @@ function get_params(
     xrange::Array{Float64,1},
     dataname::String,
     savename::String,
-    min_factor::Float64 = 0.01,
+    min_factor::Float64 = 0.1,
     bmin::Float64 = 1.0,
     patch::Float64 = 1.0 # a temporary patch so that the discrete and continuous
                   #stables solutions more or less coincide
@@ -42,7 +42,7 @@ function get_params(
     pl = zeros(Ny, Nx)
     pg = zeros(Ny, Nx)
     
-    Threads.@threads for g in 1:length(idgen)
+    for g in 1:length(idgen)
         Threads.@threads for i=2:Ny-1
             Threads.@threads for j=2:Nx-1
                 idg1 = coord[idgen[g],1]
@@ -55,7 +55,7 @@ function get_params(
         end
     end
 
-    Threads.@threads for l in 1:length(dl)
+    for l in 1:length(dl)
         Threads.@threads for i=2:Ny-1
             Threads.@threads for j=2:Nx-1
                 n = norm_dist(vec(coord[l,:]), [xrange[j], yrange[i]], sigma)
@@ -72,7 +72,7 @@ function get_params(
     # each other is given by y = x. Solving for beta and alpha, the
     # distance separating the point c and the line ab is beta*sqrt(dy^2+dx^2) 
     isnew = true
-    Threads.@threads for l in 1:size(idb,1)
+    for l in 1:size(idb,1)
         x2 = coord[idb[l,2], 1]
         x1 = coord[idb[l,1], 1]
         y2 = coord[idb[l,2], 2]
@@ -134,7 +134,7 @@ function get_params(
         end
     end
 
-    
+    #  assign minimal values to ensure numerical stability
     Threads.@threads for i=2:Ny-1
         Threads.@threads for j=2:Nx-1
             if(isgrid[i,j-1] & isgrid[i,j] & !(isborder[i,j-1] & isborder[i,j])) # if the line bx(i,j) is the grid
@@ -145,6 +145,11 @@ function get_params(
             end
         end
     end
+    
+    println(minimum(m[isinside]))
+    m[isinside] .= max.(m[isinside], min_factor * sum(m[isinside]) / sum(isinside))
+    d[isinside] .= max.(d[isinside], min_factor * sum(d[isinside]) / sum(isinside))
+    println(minimum(m[isinside]))
     
     # due to how the boundary is treated in the code, interia, damping or
     # power injection on boundary won't be taken into account
@@ -192,6 +197,118 @@ function norm_dist(a::Array{Float64,1}, b::Array{Float64,1}, sigma::Float64)
     return exp(-((a[1] - b[1])^2 + (a[2] - b[2])^2) / 2 / sigma^2) / (2*pi) / sigma^2
 end
 
+function get_params_diff(
+    isinside::BitMatrix,
+    isborder::BitMatrix,
+    sigma::Float64,
+    dx::Float64,
+    yrange::Array{Float64,1},
+    xrange::Array{Float64,1},
+    dataname::String,
+    savename::String,
+    min_factor::Float64 = 0.1,
+    bmin::Float64 = 1.0,
+    patch::Float64 = 1.0 # a temporary patch so that the discrete and continuous
+                  #stables solutions more or less coincide
+)
+    data = h5read(dataname, "/")
+    mg = vec(data["gen_inertia"])
+    dg = vec(data["gen_prim_ctrl"])
+    idgen = Int64.(vec(data["gen"][:, 1]))
+    coord = alberts_projection(
+        data["bus_coord"] ./ (180 / pi),
+        13.37616 / 180 * pi,
+        46.94653 / 180 * pi,
+        10 / 180 * pi,
+        50 / 180 * pi,
+    )
+    
+    isgrid = isinside .| isborder
+    dl = vec(data["load_freq_coef"])
+    idb = Int64.(data["branch"][:, 1:2])
+    bline = 1 ./ data["branch"][:, 4]
+
+    dem = vec(data["bus"][:, 3]) / 100
+    gen = vec(data["gen"][:, 2]) / 100
+    
+    Nx = length(xrange)
+    Ny = length(yrange)
+    
+    bx = zeros(Ny, Nx)
+    by = zeros(Ny, Nx)
+    m = zeros(Ny, Nx)
+    d = zeros(Ny, Nx)
+    pl = zeros(Ny, Nx)
+    pg = zeros(Ny, Nx)
+    
+    idin = findall(isinside)
+    lat_coord = zeros(length(idin),2)
+    for i = 1:length(idin)
+        lat_coord = [yrange[idin[i][1]], yrange[idin[i][2]]]
+    end
+    
+    for g in 1:length(idgen)
+        idg1 = coord[idgen[g],1]
+        idg2 = coord[idgen[g],2]
+        n = norm_dist([idg1, idg2], [xrange[j], yrange[i]], sigma)
+        m[i,j] += mg[g] * n
+        d[i,j] += dg[g] * n
+        pg[i,j] += gen[g] * n
+    end
+
+    for l in 1:length(dl)
+        n = norm_dist(vec(coord[l,:]), [xrange[j], yrange[i]], sigma)
+        d[i,j] += dl[l] * n
+        pl[i,j] += dem[l] * n
+    end
+    
+    
+    println(minimum(m[isinside]))
+    m[isinside] .= max.(m[isinside], min_factor * sum(m[isinside]) / sum(isinside))
+    d[isinside] .= max.(d[isinside], min_factor * sum(d[isinside]) / sum(isinside))
+    println(minimum(m[isinside]))
+    
+    # due to how the boundary is treated in the code, interia, damping or
+    # power injection on boundary won't be taken into account
+    m[.!isinside] .= 0
+    d[.!isinside] .= 0
+    pl[.!isinside] .= 0
+    pg[.!isinside] .= 0
+    
+    # asign minimal values to the quantities
+    m[isinside] .= max.(m[isinside], min_factor * maximum(m))
+    d[isinside] .= max.(d[isinside], min_factor * maximum(d))
+    pl[isinside] .= max.(pl[isinside], min_factor * maximum(pl))
+    pg[isinside] .= max.(pg[isinside], min_factor * maximum(pg))
+    
+    # ensure that the integrals of the different quantities over
+    # the medium is equivalent to their sum over the discrete model
+
+    m = sum(mg) .* m ./ trapz((yrange, xrange), m)
+    d = (sum(dg) + sum(dl)) .* d ./ trapz((yrange, xrange), d)
+    pl = sum(dem) .* pl ./ trapz((yrange, xrange), pl)
+    pg = sum(gen) .* pg ./ trapz((yrange, xrange), pg)
+
+
+    # save the quantities
+    fid = h5open(savename, "w")
+    write(fid, "bx", bx)
+    write(fid, "by", by)
+    write(fid, "m", m)
+    write(fid, "d", d)
+    write(fid, "pl", pl)
+    write(fid, "pg", pg)
+    write(fid, "xrange", xrange)
+    write(fid, "yrange", yrange)
+    close(fid)
+
+    # ensure that the integral of the power injection is 0, i.e
+    # that generation match the demand.
+    p = pg - pl 
+    p[isinside] = p[isinside] .- sum(p[isinside]) / sum(isinside)
+
+    return bx, by, p, m, d
+end
 
 function get_params(isinside::BitMatrix, filename::String)
     data = h5read(filename, "/")
