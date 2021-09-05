@@ -1,13 +1,23 @@
+include("plotting.jl")
+include("ps_analysis.jl")
+
+
 function inPolygon(p::Array{Float64,2}, poly::Array{Float64,2})
     N = size(poly, 1)
-    b = Bool.(zeros(size(p,1), 1))
-    for k in 1:size(p,1)
+    b = Bool.(zeros(size(p, 1), 1))
+    for k = 1:size(p, 1)
         j = N
-        for i in 1:N
-            if(( (poly[i,2] < p[k,2]) & (poly[j,2]>=p[k,2]) ) | 
-                    ( (poly[j,2] < p[k,2]) & (poly[i,2] >=p[k,2]) ))
-                if(poly[i,1]+(p[k,2]-poly[i,2])/(poly[j,2]-poly[i,2])*(poly[j,1]-poly[i,1])<p[k,1])
-                    b[k] =  ! b[k]
+        for i = 1:N
+            if (
+                ((poly[i, 2] < p[k, 2]) & (poly[j, 2] >= p[k, 2])) |
+                ((poly[j, 2] < p[k, 2]) & (poly[i, 2] >= p[k, 2]))
+            )
+                if (
+                    poly[i, 1] +
+                    (p[k, 2] - poly[i, 2]) / (poly[j, 2] - poly[i, 2]) *
+                    (poly[j, 1] - poly[i, 1]) < p[k, 1]
+                )
+                    b[k] = !b[k]
                 end
             end
             j = i
@@ -16,101 +26,81 @@ function inPolygon(p::Array{Float64,2}, poly::Array{Float64,2})
     return b
 end
 
-function alberts_projection(coord::Array{Float64,2}, lon0::Float64, lat0::Float64, lat1::Float64, lat2::Float64)
-    R = 6371 #Earth radius in km
-    n = 1/2*(sin(lat1) + sin(lat2))
-    theta = n * (coord[:,1] .- lon0)
-    c = cos(lat1)^2 + 2*n*sin(lat1)
-    rho = R/n*sqrt.(c .- 2*n*sin.(coord[:,2]))
-    rho0 = R/n*sqrt.(c - 2*n*sin(lat0)) 
+function alberts_projection(
+    coord::Array{Float64,2};
+    lon0::Float64 = 13.37616 / 180 * pi,
+    lat0::Float64 = 46.94653 / 180 * pi,
+    lat1::Float64 = 10 / 180 * pi,
+    lat2::Float64 = 50 / 180 * pi,
+    R::Float64 = 6371.0
+)
+    # see https://en.wikipedia.org/wiki/Albers_projection
+    # R = 6.371 #Earth radius in 1000km
+    n = 1 / 2 * (sin(lat1) + sin(lat2))
+    theta = n * (coord[:, 1] .- lon0)
+    c = cos(lat1)^2 + 2 * n * sin(lat1)
+    rho = R / n * sqrt.(c .- 2 * n * sin.(coord[:, 2]))
+    rho0 = R / n * sqrt.(c - 2 * n * sin(lat0))
     x = rho .* sin.(theta)
     y = rho0 .- rho .* cos.(theta)
     return [x y]
 end
-    
-function import_border(filename::String)
+
+function import_border(
+    filename::String
+)
     data = JSON.parsefile(filename)
-    N = size(data["border"],1)
-    
-    b = zeros(N,2)
+    N = size(data["border"], 1)
+
+    b = zeros(N, 2)
     for i = 1:N
-        b[i,1] = data["border"][i][1]/180*pi
-        b[i,2] = data["border"][i][2]/180*pi
+        b[i, 1] = data["border"][i][1] / 180 * pi
+        b[i, 2] = data["border"][i][2] / 180 * pi
     end
-    
-    if(b[1,:] != b[end,:])
-        b = vcat(b,reshape(b[1,:],1,2))
+
+    if (b[1, :] != b[end, :])
+        b = vcat(b, reshape(b[1, :], 1, 2))
     end
-    
-    lon0 = 13.37616/180*pi # German parliament
-    lat0 = 46.94653/180*pi # Swiss parliament
-    lat1 = 10/180*pi
-    lat2 = 50/180*pi
-    
-    b = alberts_projection(b, lon0, lat0, lat1, lat2)
+
+    b = alberts_projection(b)
     return b
 end
 
-function do_plot(isin::BitMatrix, values::Array{Float64,2}, xlim::Tuple{Int64, Int64}, ylim::Tuple{Int64, Int64})
-    temp = copy(values)
-    temp[.!isin] .= NaN
-    return contour(temp,fill=true, xlim=xlim, ylim=ylim)
-end
 
-function do_plot(isin::BitMatrix, values::Array{Float64,2})
-    temp = copy(values)
-    temp[.!isin] .= NaN
-    return contour(temp,fill=true)
-end
-
-
-function set_ref_phase(isinside::BitMatrix, yrange::Array{Float64,1},
-    xrange::Array{Float64,1}, theta::Array{Float64,2}, coord::Array{Float64, 1},
-    th_ref::Float64 = 0.0)
-    # set the phases according to some reference phase at at a given location 
-    idin = findall(isinside)
-    cont_coord = zeros(length(idin), 2)
-    for i = 1:length(idin)
-        cont_coord[i,:] = [xrange[idin[i][2]], yrange[idin[i][1]]]
+function import_json_numerics(
+    filename::String
+)
+    raw_data = JSON.parsefile(filename)
+    keys = raw_data.keys
+    isdef = falses(length(keys))
+    for i = 1:length(keys)
+        isdef[i] = isassigned(keys, i)
     end
-    dx = cont_coord[:,1] .- coord[1]
-    dy = cont_coord[:,2] .- coord[2]
-    id = argmin(dx.^2 + dy.^2)
-    println(cont_coord[id,:], theta[idin[id]])
-    theta[isinside] .= theta[isinside] .- theta[idin[id]] .+ th_ref
-    return theta
-end
-
-
-
-function get_discrete_values(isinside::BitMatrix, yrange::Array{Float64,1},
-    xrange::Array{Float64,1}, cont_values::Array{Float64,2}, disc_coord::Array{Float64, 2})
-    
-    idin = findall(isinside)
-    cont_coord = zeros(length(idin), 2)
-    for i = 1:length(idin)
-        cont_coord[i,:] = [xrange[idin[i][2]], yrange[idin[i][1]]]
-    end
-    
-    disc_values = zeros(size(coord, 1))
-    for i = 1:size(disc_coord, 1)
-        dx = cont_coord[:,1] .- disc_coord[i,1]
-        dy = cont_coord[:,2] .- disc_coord[i,2]
-        dist = min.(sqrt.(dx.^2 + dy.^2), 10*minimum(sqrt.(dx.^2 + dy.^2))) # max is here to prevent NaN
-        factor = exp.(-dist) ./ sum(exp.(-dist)) # here we use softmax for no particular reason
-        if(isnan(sum(factor)))
-            println(minimum(dist))
-            println(maximum(dist))
+    keys = keys[isdef]
+    data = Dict{String, Array{Float64,2}}()
+    for k  in keys
+        println(k)
+        N = size(raw_data[k], 1)
+        M = size(raw_data[k][1], 1) # assumes that data consists of matrices
+        temp = zeros(N, M)
+        for i = 1:N
+            for j = 1:M
+                temp[i, j] = raw_data[k][i][j]
+            end
         end
-        disc_values[i] = sum(factor .* cont_values[idin])
+        data[k] = temp
     end
-    
-    return disc_values
+    return data, keys
 end
 
 
-function get_cont_values(isinside::BitMatrix, yrange::Array{Float64,1},
-    xrange::Array{Float64,1}, disc_coord::Array{Float64, 2}, disc_values::Array{Float64, 1})
+function get_cont_values(
+    isinside::BitMatrix,
+    yrange::Array{Float64, 1},
+    xrange::Array{Float64, 1},
+    disc_coord::Array{Float64, 2},
+    disc_values::Array{Float64, 1};
+    Niter = 1000)
     
     idin = findall(isinside)
     cont_coord = zeros(length(idin), 2)
@@ -132,7 +122,7 @@ function get_cont_values(isinside::BitMatrix, yrange::Array{Float64,1},
     new_cont_values = zeros(Ny, Nx)
     tau = 0.001
     interval = 100
-    Niter = 1000
+
     @time begin
         for k in 1:Niter
             Threads.@threads for i in 2:Ny-1
@@ -171,24 +161,6 @@ function get_cont_values(isinside::BitMatrix, yrange::Array{Float64,1},
     
     
     return cont_values
-end
-
-
-function power_flow(isinside::BitMatrix, theta::Array{Float64,2}, bx::Array{Float64,2},
-    by::Array{Float64,2}, dx::Float64)
-    dx_th = zeros(size(theta))
-    dy_th = zeros(size(theta))
-    for i in 2:size(theta, 1)-1
-        for j in 2:size(theta, 2)-1
-            if(isinside[i,j])
-                dx_th[i,j] = (theta[i,j+1] - theta[i,j-1]) / 2.0 / dx
-                dy_th[i,j] = (theta[i+1,j] - theta[i-1,j]) / 2.0 / dx
-            end
-        end
-    end
-    fx = bx .* dx_th
-    fy = by .* dy_th
-    return fx, fy
 end
 
 

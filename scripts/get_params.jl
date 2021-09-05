@@ -6,7 +6,7 @@ function get_params(
     xrange::Array{Float64,1},
     dataname::String,
     savename::String;
-    sigma::Float64 = 50.0,
+    sigma::Float64 = 100.0,
     min_factor::Float64 = 0.1,
     bmin::Float64 = 1.0,
     patch::Float64 = 1.0 # a temporary patch so that the discrete and continuous
@@ -19,8 +19,10 @@ function get_params(
     Nx = length(xrange)
     Ny = length(yrange)
     
-    bx = zeros(Ny, Nx)
-    by = zeros(Ny, Nx)
+    bx = bmin * ones(Ny, Nx)
+    by = bmin * ones(Ny, Nx)
+    #bx = zeros(Ny, Nx)
+    #by = zeros(Ny, Nx)    
     m = zeros(Ny, Nx)
     d = zeros(Ny, Nx)
     pl = zeros(Ny, Nx)
@@ -56,11 +58,11 @@ function get_params(
     # each other is given by y = x. Solving for beta and alpha, the
     # distance separating the point c and the line ab is beta*sqrt(dy^2+dx^2) 
     isnew = true
-    for l in 1:size(idb,1)
-        x2 = coord[idb[l,2], 1]
-        x1 = coord[idb[l,1], 1]
-        y2 = coord[idb[l,2], 2]
-        y1 = coord[idb[l,1], 2] 
+    for l in 1:size(idb, 1)
+        x2 = coord[idb[l, 2], 1]
+        x1 = coord[idb[l, 1], 1]
+        y2 = coord[idb[l, 2], 2]
+        y1 = coord[idb[l, 1], 2] 
         dx_l = x2 - x1
         dy_l = y2 - y1
         ds2 = (dy_l^2 + dx_l^2)
@@ -68,9 +70,9 @@ function get_params(
         if(dx_l != 0 && dy_l != 0) # if not a transformer
             Threads.@threads for i = 2:Ny-1
                 Threads.@threads for j = 2:Nx-1
-                    if((isgrid[i,j-1] & isgrid[i,j]) & !(isborder[i,j-1] & isborder[i,j])) # if the line bx(i,j) is the grid                     
+                    if(isgrid[i,j] && isgrid[i,j+1]) # if the line bx(i,j) is the grid                     
                         # we set the coordinates of the lines to be the ones of their middle points
-                        bx_x = (xrange[j-1] + xrange[j]) / 2
+                        bx_x = (xrange[j] + xrange[j+1]) / 2
                         bx_y = yrange[i]
                         beta = (dx_l*(y1 - bx_y) + dy_l*(bx_x- x1)) / ds2
                         alpha = (dx_l*(bx_x - x1) + dy_l*(bx_y - y1)) / ds2
@@ -79,17 +81,17 @@ function get_params(
                             dist = abs(beta) * sqrt(ds2) 
                             # if close enough to the line 
                             f = exp(-dist^2/2/sigma^2)/sigma^2 / (2*pi)
-                            bx[i,j] += bline[l] * abs(cos(phi)) * f * dx^2 * patch 
+                            bx[i, j] += bline[l] * abs(cos(phi)) * f * dx^2 * patch 
                         # else close enough to an end of the line 
                         else
                             dist = min((bx_y - y1)^2 + (bx_x - x1)^2,
                             (bx_y - y2)^2 + (bx_x - x2)^2)
                             f = exp(-dist / 2 / sigma^2) / sigma^2 / (2*pi)
-                            bx[i,j] += bline[l] * abs(cos(phi)) * f * dx^2 * patch
+                            bx[i, j] += bline[l] * abs(cos(phi)) * f * dx^2 * patch
                         end
                     end
                     
-                    if((isgrid[i,j] & isgrid[i+1,j]) & !(isborder[i,j] & isborder[i+1,j])) # if the line by(i,j) is the grid 
+                    if(isgrid[i, j] && isgrid[i+1, j]) # if the line by(i,j) is the grid 
                         # we set the coordinates of the lines to be the ones of their middle points
                         by_x = xrange[j]
                         by_y = (yrange[i] + yrange[i+1]) / 2      
@@ -99,7 +101,7 @@ function get_params(
                         if((0 < alpha) & (alpha < 1))
                             dist = abs(beta) * sqrt(ds2) 
                             # if close enough to the line 
-                            f = exp(-dist^2/2/sigma^2) / sigma^2 / (2*pi)
+                            f = exp(-dist^2 / 2 / sigma^2) / sigma^2 / (2*pi)
                             by[i,j] += bline[l] * abs(sin(phi)) * f * dx^2 * patch 
                         # else close enough to an end of the line 
                         else
@@ -118,32 +120,27 @@ function get_params(
     #  assign minimal values to ensure numerical stability
     Threads.@threads for i=2:Ny-1
         Threads.@threads for j=2:Nx-1
-            if(isgrid[i,j-1] & isgrid[i,j] & !(isborder[i,j-1] & isborder[i,j])) # if the line bx(i,j) is the grid
-                bx[i,j] = max(bx[i,j], bmin)
+            if(isgrid[i, j-1] & isgrid[i, j] & !(isborder[i, j-1] & isborder[i, j])) # if the line bx(i,j) is the grid
+                bx[i, j] = max(bx[i, j], bmin)
             end
-            if(isgrid[i,j] & isgrid[i+1,j] & !(isborder[i,j] & isborder[i+1,j])) # if the line by(i,j) is the grid 
-                by[i,j] = max(by[i,j], bmin)
+            if(isgrid[i, j] & isgrid[i, j] & !(isborder[i, j-1] & isborder[i, j])) # if the line by(i,j) is the grid 
+                by[i, j] = max(by[i, j], bmin)
             end
         end
     end
-    
-    println(minimum(m[isinside]))
-    m[isinside] .= max.(m[isinside], min_factor * sum(m[isinside]) / sum(isinside))
-    d[isinside] .= max.(d[isinside], min_factor * sum(d[isinside]) / sum(isinside))
-    println(minimum(m[isinside]))
-    
+
     # due to how the boundary is treated in the code, interia, damping or
     # power injection on boundary won't be taken into account
-    m[.!isinside] .= 0
-    d[.!isinside] .= 0
-    pl[.!isinside] .= 0
-    pg[.!isinside] .= 0
+    m[.!isgrid] .= 0
+    d[.!isgrid] .= 0
+    pl[.!isgrid] .= 0
+    pg[.!isgrid] .= 0
     
     # asign minimal values to the quantities
-    m[isinside] .= max.(m[isinside], min_factor * maximum(m))
-    d[isinside] .= max.(d[isinside], min_factor * maximum(d))
-    pl[isinside] .= max.(pl[isinside], min_factor * maximum(pl))
-    pg[isinside] .= max.(pg[isinside], min_factor * maximum(pg))
+    m[isgrid] .= max.(m[isgrid], min_factor * maximum(m))
+    d[isgrid] .= max.(d[isgrid], min_factor * maximum(d))
+    pl[isgrid] .= max.(pl[isgrid], min_factor * maximum(pl))
+    pg[isgrid] .= max.(pg[isgrid], min_factor * maximum(pg))
     
     # ensure that the integrals of the different quantities over
     # the medium is equivalent to their sum over the discrete model
@@ -152,7 +149,7 @@ function get_params(
     d = (sum(dg) + sum(dl)) .* d ./ trapz((yrange, xrange), d)
     pl = sum(dem) .* pl ./ trapz((yrange, xrange), pl)
     pg = sum(gen) .* pg ./ trapz((yrange, xrange), pg)
-
+    
 
     # save the quantities
     fid = h5open(savename, "w")
@@ -169,13 +166,17 @@ function get_params(
     # ensure that the integral of the power injection is 0, i.e
     # that generation match the demand.
     p = pg - pl 
-    p[isinside] = p[isinside] .- sum(p[isinside]) / sum(isinside)
+    p[isgrid] = p[isgrid] .- sum(p[isgrid]) / sum(isgrid)
 
     return bx, by, p, m, d
 end
 
 
-function norm_dist(a::Array{Float64,1}, b::Array{Float64,1}, sigma::Float64)
+function norm_dist(
+    a::Array{Float64,1},
+    b::Array{Float64,1},
+    sigma::Float64
+)
     return exp(-((a[1] - b[1])^2 + (a[2] - b[2])^2) / 2 / sigma^2) / (2*pi) / sigma^2
 end
 
@@ -184,8 +185,8 @@ function get_params_diff(
     isinside::BitMatrix,
     isborder::BitMatrix,
     dx::Float64,
-    yrange::Array{Float64,1},
-    xrange::Array{Float64,1},
+    yrange::Array{Float64, 1},
+    xrange::Array{Float64, 1},
     dataname::String,
     savename::String;
     def_val::Float64 = 1E-2,
@@ -193,7 +194,8 @@ function get_params_diff(
     Niter::Int64 = 5000,
     tau::Float64 = 0.001,
     patch::Float64 = 1.0,
-    bmin::Float64 = 1.0)
+    bmin::Float64 = 1.0
+)
     # uses heat equation to "diffuse" the discrete parameters over the lattice
     # for heat equation tau=kappa*dt/dx^2
     
@@ -204,7 +206,7 @@ function get_params_diff(
     Nx = length(xrange)
     Ny = length(yrange)
     
-    idin = findall(isinside)
+    idin = findall(isborder)
     Nbus = length(idin)
     lat_coord = zeros(Nbus, 2)
     for i = 1:Nbus
@@ -299,7 +301,7 @@ function get_params_diff(
                     end
                 end
             end
-            
+            #=
             Threads.@threads for k in 1:size(n,1)
                 i = Int64(n[k,1])
                 j = Int64(n[k,2])
@@ -336,7 +338,7 @@ function get_params_diff(
                     by_new[i,j] = by_new[i+2,j]
                 end
             end
-            
+            =#
             m = copy(m_new)
             d = copy(d_new)
             pg = copy(pg_new)
@@ -350,14 +352,6 @@ function get_params_diff(
         end
     end
     
-    # due to how the boundary is treated in the code, interia, damping or
-    # power injection on boundary won't be taken into account
-    m[.!isinside] .= 0
-    d[.!isinside] .= 0
-    pl[.!isinside] .= 0
-    pg[.!isinside] .= 0
-    
-    
     #  assign minimal values to ensure numerical stability
     Threads.@threads for i=2:Ny-1
         Threads.@threads for j=2:Nx-1
@@ -370,13 +364,26 @@ function get_params_diff(
         end
     end
     
+    # due to how the boundary is treated in the code, interia, damping or
+    # power injection on boundary won't be taken into account
+    m[.!isgrid] .= 0
+    d[.!isgrid] .= 0
+    pl[.!isgrid] .= 0
+    pg[.!isgrid] .= 0
+    
+    # asign minimal values to the quantities
+    #m[isgrid] .= max.(m[isgrid], min_factor * maximum(m))
+    #d[isgrid] .= max.(d[isgrid], min_factor * maximum(d))
+    #pl[isgrid] .= max.(pl[isgrid], min_factor * maximum(pl))
+    #pg[isgrid] .= max.(pg[isgrid], min_factor * maximum(pg))
+    
     # ensure that the integrals of the different quantities over
     # the medium is equivalent to their sum over the discrete model
 
     m = sum(mg) .* m ./ trapz((yrange, xrange), m)
     d = (sum(dg) + sum(dl)) .* d ./ trapz((yrange, xrange), d)
     pl = sum(dem) .* pl ./ trapz((yrange, xrange), pl)
-    pg = sum(gen) .* pg ./ trapz((yrange, xrange), pg) 
+    pg = sum(gen) .* pg ./ trapz((yrange, xrange), pg)
     
     # save the quantities
     fid = h5open(savename, "w")
@@ -399,22 +406,17 @@ function get_params_diff(
 end
 
 
-function load_discrete_model(dataname::String)
+function load_discrete_model(
+    dataname::String
+)
     data = h5read(dataname, "/")
     mg = vec(data["gen_inertia"])
     dg = vec(data["gen_prim_ctrl"])
     idgen = Int64.(vec(data["gen"][:, 1]))
-    coord = alberts_projection(
-        data["bus_coord"] ./ (180 / pi),
-        13.37616 / 180 * pi,
-        46.94653 / 180 * pi,
-        10 / 180 * pi,
-        50 / 180 * pi,
-    )
+    coord = alberts_projection( data["bus_coord"] ./ (180 / pi) )
     dl = vec(data["load_freq_coef"])
     idb = Int64.(data["branch"][:, 1:2])
     bline = 1 ./ data["branch"][:, 4]
-
     dem = vec(data["bus"][:, 3]) / 100.0
     th = vec(data["bus"][:, 9]) / 180.0 * pi
     gen = vec(data["gen"][:, 2]) / 100.0
@@ -422,7 +424,10 @@ function load_discrete_model(dataname::String)
 end
 
 
-function get_params(isinside::BitMatrix, filename::String)
+function get_params(
+    isinside::BitMatrix,
+    filename::String
+)
     data = h5read(filename, "/")
     m = data["m"]
     d = data["d"]
@@ -430,7 +435,6 @@ function get_params(isinside::BitMatrix, filename::String)
     by = data["by"]
     pl = data["pl"]
     pg = data["pg"]
-
     p = pg - pl
     p[isinside] = p[isinside] .- sum(p[isinside]) / sum(isinside)
     return bx, by, p, m, d
