@@ -1,9 +1,10 @@
 function get_params(
     isinside::BitMatrix,
     isborder::BitMatrix,
+    n_vector::Array{Float64, 2},
     dx::Float64,
-    yrange::Array{Float64,1},
-    xrange::Array{Float64,1},
+    yrange::Array{Float64, 1},
+    xrange::Array{Float64, 1},
     dataname::String,
     savename::String;
     sigma::Float64 = 100.0,
@@ -19,10 +20,10 @@ function get_params(
     Nx = length(xrange)
     Ny = length(yrange)
     
-    bx = bmin * ones(Ny, Nx)
-    by = bmin * ones(Ny, Nx)
-    #bx = zeros(Ny, Nx)
-    #by = zeros(Ny, Nx)    
+    #bx = bmin * ones(Ny, Nx)
+    #by = bmin * ones(Ny, Nx)
+    bx = zeros(Ny, Nx)
+    by = zeros(Ny, Nx)    
     m = zeros(Ny, Nx)
     d = zeros(Ny, Nx)
     pl = zeros(Ny, Nx)
@@ -118,6 +119,7 @@ function get_params(
     end
 
     #  assign minimal values to ensure numerical stability
+    #=
     Threads.@threads for i=2:Ny-1
         Threads.@threads for j=2:Nx-1
             if(isgrid[i, j-1] & isgrid[i, j] & !(isborder[i, j-1] & isborder[i, j])) # if the line bx(i,j) is the grid
@@ -128,19 +130,47 @@ function get_params(
             end
         end
     end
-
+    =#
+    
+    Threads.@threads for i=2:Ny-1
+        Threads.@threads for j=2:Nx-1
+            if(isgrid[i, j-1] & isgrid[i, j]) # if the line bx(i,j) is the grid
+                bx[i, j] = max(bx[i, j], bmin)
+            end
+            if(isgrid[i, j] & isgrid[i, j]) # if the line by(i,j) is the grid 
+                by[i, j] = max(by[i, j], bmin)
+            end
+        end
+    end
+    
+    Threads.@threads for k in 1:size(n_vector,1)
+        i = Int64(n_vector[k,1])
+        j = Int64(n_vector[k,2])
+                
+        nx = n_vector[k,4]
+        ny = n_vector[k,3]
+        
+        by[i-1, j] = ny * (1 + ny) / 2  * by[i-2, j]
+        by[i, j] = ny * (ny - 1) / 2 * by[i+1, j]
+        bx[i, j-1] = nx * (1 + nx) / 2 * by[i, j-2]
+        bx[i, j] = nx * (nx - 1) / 2 * by[i, j+1]
+    end
     # due to how the boundary is treated in the code, interia, damping or
     # power injection on boundary won't be taken into account
     m[.!isgrid] .= 0
     d[.!isgrid] .= 0
-    pl[.!isgrid] .= 0
-    pg[.!isgrid] .= 0
+    #pl[.!isgrid] .= 0
+    #pg[.!isgrid] .= 0
+    pl[.!isinside] .= 0
+    pg[.!isinside] .= 0
     
     # asign minimal values to the quantities
     m[isgrid] .= max.(m[isgrid], min_factor * maximum(m))
     d[isgrid] .= max.(d[isgrid], min_factor * maximum(d))
-    pl[isgrid] .= max.(pl[isgrid], min_factor * maximum(pl))
-    pg[isgrid] .= max.(pg[isgrid], min_factor * maximum(pg))
+    #pl[isgrid] .= max.(pl[isgrid], min_factor * maximum(pl))
+    #pg[isgrid] .= max.(pg[isgrid], min_factor * maximum(pg))
+    pl[isinside] .= max.(pl[isinside], min_factor * maximum(pl))
+    pg[isinside] .= max.(pg[isinside], min_factor * maximum(pg))
     
     # ensure that the integrals of the different quantities over
     # the medium is equivalent to their sum over the discrete model
@@ -166,8 +196,9 @@ function get_params(
     # ensure that the integral of the power injection is 0, i.e
     # that generation match the demand.
     p = pg - pl 
-    p[isgrid] = p[isgrid] .- sum(p[isgrid]) / sum(isgrid)
-
+    #p[isgrid] = p[isgrid] .- sum(p[isgrid]) / sum(isgrid)
+    p[isinside] = p[isinside] .- sum(p[isinside]) / sum(isinside)
+    
     return bx, by, p, m, d
 end
 

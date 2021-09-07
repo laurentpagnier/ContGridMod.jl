@@ -15,25 +15,24 @@ function compute_stable_sol(
         idin[i,:] = [temp[i][1], temp[i][2]]
     end
 
-    th_old = zeros(Ny, Nx)
     th = zeros(Ny, Nx)
-    
+    ths = zeros(Ny, Nx, Int64(floor(Niter/interval)))
     @time begin
         for t in 1:Niter
             if(mod(t, interval) == 0)
                 temp = copy(th)
             end
-
+            
             Threads.@threads for k in 1:size(idin, 1)
                 i = idin[k, 1]
                 j = idin[k, 2]
-                bij = (by[i-1,j] + by[i,j] + bx[i-1, j] + bx[i,j])
+                bij = (by[i-1, j] + by[i, j] + bx[i, j-1] + bx[i, j])
                 th[i,j] = (
-                    by[i,j] * th_old[i+1,j] +
-                    by[i-1, j] * th_old[i-1, j] + 
-                    bx[i,j] * th_old[i,j+1] +
-                    bx[i,j-1] * th_old[i,j-1] +
-                    dx^2 * p[i,j]
+                    by[i, j] * th[i+1, j] +
+                    by[i-1, j] * th[i-1, j] + 
+                    bx[i, j] * th[i, j+1] +
+                    bx[i, j-1] * th[i, j-1] +
+                    dx^2 * p[i, j]
                     ) / bij
             end
             
@@ -43,25 +42,40 @@ function compute_stable_sol(
                 
                 nx = n[k,4]
                 ny = n[k,3]
+                
                 bij = (1 + ny) * by[i-1, j] + (1 - ny) * by[i, j] +
                     (1 + nx) * bx[i, j-1] + (1 - nx) * bx[i, j]
 
                 th[i, j] = (
-                    (1 + ny) * by[i-1, j] * th_old[i-1, j] +
-                    (1 - ny) * by[i, j] * th_old[i+1, j] + 
-                    (1 + nx) * bx[i, j-1] * th_old[i, j-1] +
-                    (1 - nx) * bx[i, j] * th_old[i,j+1] +
-                    dx^2 * p[i,j]
+                    (1 + ny) * by[i-1, j] * th[i-1, j] +
+                    (1 - ny) * by[i, j] * th[i+1, j] + 
+                    (1 + nx) * bx[i, j-1] * th[i, j-1] +
+                    (1 - nx) * bx[i, j] * th[i,j+1] +
+                    dx^2 * p[i, j]
                     ) / bij
+                
+                if(by[i-1, j] == 0)
+                    println("by_{" * string(i-1) * ", " * string(j )* "} = 0")
+                end 
+                if(by[i, j] == 0)
+                    println("by_{" * string(i) * ", " * string(j )* "} = 0")
+                end
+                if(bx[i-1, j] == 0)
+                    println("bx_{" * string(i) * "," * string(j-1)* "} = 0")
+                end 
+                if(bx[i, j] == 0)
+                    println("bx_{" * string(i) * "," * string(j )* "} = 0")
+                end
             end
+            
             if(mod(t, interval) == 0)
                 println( [t maximum(abs.(th - temp))] )
+                ths[:, :, Int64(t/interval)] = th
                 if( maximum(abs.(th - temp)) < tol )
                     break
                 end
             end
-            th_old = copy(th)
         end
     end
-    return th
+    return th, ths
 end
