@@ -36,6 +36,7 @@ function time_plot(
     time::Array{Float64, 1},
     cont_value::Array{Float64, 3}, # timeseries from the continous model
     coord::Array{Float64, 2}; # locations from where we wantg to fetch data
+    borders::Array{Array{Float64,2},1} = Array{Float64,2}[],
     xlab::String = String("\$t[s]\$"),
     tstart::Float64 = 0.0,
     tend::Float64 = 0.0
@@ -56,17 +57,32 @@ function time_plot(
     for i = 1:length(idin)
         cont_coord[i,:] = [xrange[idin[i][2]], yrange[idin[i][1]]]
     end
-
+    p1 = Plots.Plot()
     for k in 1:size(coord, 1)
         dx = cont_coord[:, 1] .- coord[k, 1]
         dy = cont_coord[:, 2] .- coord[k, 2]
         id = argmin(dx.^2 + dy.^2)
         if(k == 1)
-            plot(time[idstart:idend], cont_value[idin[id][1], idin[id][2], idstart:idend])
+            p1 = plot(time[idstart:idend], cont_value[idin[id][1], idin[id][2], idstart:idend])
         else
-            plot!(time[idstart:idend], cont_value[idin[id][1], idin[id][2], idstart:idend])
+            p1 = plot!(time[idstart:idend], cont_value[idin[id][1], idin[id][2], idstart:idend])
         end
     end
+    plot!(legend = false)
+     
+    p2 = Plots.Plot()
+    for k in 1:size(coord, 1)
+        if(k == 1)
+            p2 = scatter([coord[k, 1]], [coord[k, 2]])
+        else
+            p2 = scatter!([coord[k, 1]], [coord[k, 2]])
+        end
+    end
+    for k in 1:length(borders)
+        p2 = plot!(borders[k][:, 1], borders[k][:, 2], color=:black,)
+    end
+    plot!(legend = false)
+    plot(p1, p2, layout=(1, 2), size=(800,300))
 end
 
 
