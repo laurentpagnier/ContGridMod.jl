@@ -214,7 +214,7 @@ end
 
 function get_params_diff(
     isinside::BitMatrix,
-    isborder::BitMatrix,
+    n::Array{Float64, 2},
     dx::Float64,
     yrange::Array{Float64, 1},
     xrange::Array{Float64, 1},
@@ -224,46 +224,57 @@ function get_params_diff(
     dmax::Float64 = 100.0,
     Niter::Int64 = 5000,
     tau::Float64 = 0.001,
-    patch::Float64 = 1.0,
+    patch::Float64 = 0.001,
+    min_factor::Float64 = 0.1,
     bmin::Float64 = 1.0
 )
-    # uses heat equation to "diffuse" the discrete parameters over the lattice
-    # for heat equation tau=kappa*dt/dx^2
+    # this function uses the heat equation to "diffuse" the discrete 
+    # parameters over the lattice (tau=kappa*dt/dx^2)
+
+    # load the discrete model
+    gen, dem, bline, idb, idgen, coord, mg, dg, dl, th = load_discrete_model(dataname)
     
     isgrid = isinside .| isborder
-    println(patch)
-    gen, dem, bline, idb, idgen, coord, mg, dg, dl, th = load_discrete_model(dataname)
 
     Nx = length(xrange)
     Ny = length(yrange)
     
-    idin = findall(isborder)
-    Nbus = length(idin)
+    # get the coordinates of every point in the grid
+    temp = findall(isgrid)
+    Nbus = length(temp)
     lat_coord = zeros(Nbus, 2)
+    idgrid = Int64.(zeros(size(temp, 1), 2))
     for i = 1:Nbus
-        lat_coord[i, :] = [yrange[idin[i][1]], xrange[idin[i][2]]]
+        idgrid[i,:] = [temp[i][1], temp[i][2]]
+        lat_coord[i, :] = [yrange[temp[i][1]], xrange[temp[i][2]]]
     end
     
-    m_vec = def_val * ones(Nbus)
-    d_vec = def_val * ones(Nbus)
-    pl_vec = def_val * ones(Nbus)
-    pg_vec = def_val * ones(Nbus)
-    bx_vec = def_val * ones(Nbus)
-    by_vec = def_val * ones(Nbus)
+    temp = findall(isinside)
+    idin = Int64.(zeros(size(temp, 1), 2))
+    for i = 1:size(temp,1)
+        idin[i,:] = [temp[i][1], temp[i][2]]
+    end
+
+    m = zeros(Ny, Nx)
+    d = zeros(Ny, Nx)
+    pl = zeros(Ny, Nx)
+    pg = zeros(Ny, Nx)
+    bx = zeros(Ny, Nx)
+    by = zeros(Ny, Nx)
     
     for g in 1:length(idgen)
         k = argmin((lat_coord[:, 2] .- coord[idgen[g],1]).^2 +
             (lat_coord[:, 1] .- coord[idgen[g],2]).^2)
-        m_vec[k] += mg[g]
-        d_vec[k] += dg[g]
-        pg_vec[k] += gen[g]
+        m[idgrid[k,1], idgrid[k,2]] += mg[g]
+        d[idgrid[k,1], idgrid[k,2]] += dg[g]
+        pg[idgrid[k,1], idgrid[k,2]] += gen[g]
     end
     
     for l in 1:length(dl)
         k = argmin((lat_coord[:, 2] .- coord[l,1]).^2 +
             (lat_coord[:, 1] .- coord[l,2]).^2)
-        d_vec[k] += dl[l]
-        pl_vec[k] += dem[l]
+        d[idgrid[k,1], idgrid[k,2]] += dl[l]
+        pl[idgrid[k,1], idgrid[k,2]] += dem[l]
     end
 
     for l in 1:size(idb,1)
@@ -285,128 +296,39 @@ function get_params_diff(
             dist = abs.(beta) .* in_seg .* sqrt(ds2) + # if close to the segment
                 .!in_seg .* min.(sqrt.((x .- x1).^2 + (y .- y1).^2), # if close to the ends
                 sqrt.((x .- x2).^2 + (y .- y2).^2)) 
-            bx_vec[dist .< dmax] .+= bline[l] * abs(cos(phi)) * dx^2 * patch
-            by_vec[dist .< dmax] .+= bline[l] * abs(sin(phi)) * dx^2 * patch
+            bx[idgrid[dist .< dmax,1], idgrid[dist .< dmax,2]] .+= bline[l] * abs(cos(phi)) * dx^2 * patch
+            by[idgrid[dist .< dmax,1], idgrid[dist .< dmax,2]] .+= bline[l] * abs(sin(phi)) * dx^2 * patch
         end
     end
+
     
-    m = zeros(Ny, Nx)
-    d = zeros(Ny, Nx)
-    pg = zeros(Ny, Nx)
-    pl = zeros(Ny, Nx)
-    bx = zeros(Ny, Nx)
-    by = zeros(Ny, Nx)
-  
-    m_new = zeros(Ny, Nx)
-    d_new = zeros(Ny, Nx)
-    pg_new = zeros(Ny, Nx)
-    pl_new = zeros(Ny, Nx)
-    bx_new = zeros(Ny, Nx)
-    by_new = zeros(Ny, Nx)
-    
-    m[isinside] = m_vec
-    d[isinside] = d_vec
-    pg[isinside] = pg_vec
-    pl[isinside] = pl_vec
-    bx[isinside] = bx_vec
-    by[isinside] = by_vec
-    
-    interval = 100
     @time begin
-        for k in 1:Niter
-            Threads.@threads for i in 2:Ny-1
-                Threads.@threads for j in 2:Nx-1
-                    if(isinside[i,j])
-                        m_new[i,j] = (1.0 - 4.0 * tau) * m[i,j] + tau * (m[i+1,j] +
-                            m[i-1,j] + m[i,j+1] + m[i,j-1])
-                        d_new[i,j] = (1.0 - 4.0 * tau) * d[i,j] + tau * (d[i+1,j] +
-                            d[i-1,j] + d[i,j+1] + d[i,j-1])
-                        pg_new[i,j] = (1.0 - 4.0 * tau) * pg[i,j] + tau * (pg[i+1,j] +
-                            pg[i-1,j] + pg[i,j+1] + pg[i,j-1])
-                        pl_new[i,j] = (1.0 - 4.0 * tau) * pl[i,j] + tau * (pl[i+1,j] +
-                            pl[i-1,j] + pl[i,j+1] + pl[i,j-1])
-                        bx_new[i,j] = (1.0 - 4.0 * tau) * bx[i,j] + tau * (bx[i+1,j] +
-                            bx[i-1,j] + bx[i,j+1] + bx[i,j-1])
-                        by_new[i,j] = (1.0 - 4.0 * tau) * by[i,j] + tau * (by[i+1,j] +
-                            by[i-1,j] + by[i,j+1] + by[i,j-1])
-                    end
-                end
-            end
-            #=
-            Threads.@threads for k in 1:size(n,1)
-                i = Int64(n[k,1])
-                j = Int64(n[k,2])
-                nx = n[k,4]
-                ny = n[k,3]
-                if(nx == 1)
-                    m_new[i,j] = m_new[i,j-2]
-                    d_new[i,j] = d_new[i,j-2]
-                    pg_new[i,j] = pg_new[i,j-2]
-                    pl_new[i,j] = pl_new[i,j-2]
-                    bx_new[i,j] = bx_new[i,j-2]
-                    by_new[i,j] = by_new[i,j-2]
-                elseif(nx == -1)
-                    m_new[i,j] = m_new[i,j+2]
-                    d_new[i,j] = d_new[i,j+2]
-                    pg_new[i,j] = pg_new[i,j+2]
-                    pl_new[i,j] = pl_new[i,j+2]
-                    bx_new[i,j] = bx_new[i,j+2]
-                    by_new[i,j] = by_new[i,j+2]
-                end
-                if(ny == 1)
-                    m_new[i,j] = m_new[i-2,j]
-                    d_new[i,j] = d_new[i-2,j]
-                    pg_new[i,j] = pg_new[i-2,j]
-                    pl_new[i,j] = pl_new[i-2,j]
-                    bx_new[i,j] = bx_new[i-2,j]
-                    by_new[i,j] = by_new[i-2,j]
-                elseif(ny == -1)
-                    m_new[i,j] = m_new[i+2,j]
-                    d_new[i,j] = d_new[i+2,j]
-                    pg_new[i,j] = pg_new[i+2,j]
-                    pl_new[i,j] = pl_new[i+2,j]
-                    bx_new[i,j] = bx_new[i+2,j]
-                    by_new[i,j] = by_new[i+2,j]
-                end
-            end
-            =#
-            m = copy(m_new)
-            d = copy(d_new)
-            pg = copy(pg_new)
-            pl = copy(pl_new)
-            bx = copy(bx_new)
-            by = copy(by_new)
-            
-            if(mod(k,interval) == 0)
-                println(k)
-            end
-        end
+        m = heat_diff(idin, n, m, Niter = Niter, tau = tau)
+        println("Done with inertia.")
+        d = heat_diff(idin, n, d, Niter = Niter, tau = tau)
+        println("Done with damping.")
+        pg = heat_diff(idin, n, pg, Niter = Niter, tau = tau)
+        println("Done with with generation.")
+        pl = heat_diff(idin, n, pl, Niter = Niter, tau = tau)
+        println("Done with load.")
+        bx = heat_diff(idin, n, bx, Niter = Niter, tau = tau)
+        by = heat_diff(idin, n, by, Niter = Niter, tau = tau)
     end
-    
-    #  assign minimal values to ensure numerical stability
-    Threads.@threads for i=2:Ny-1
-        Threads.@threads for j=2:Nx-1
-            if(isgrid[i,j-1] & isgrid[i,j] & !(isborder[i,j-1] & isborder[i,j])) # if the line bx(i,j) is the grid
-                bx[i,j] = max(bx[i,j], bmin)
-            end
-            if(isgrid[i,j] & isgrid[i+1,j] & !(isborder[i,j] & isborder[i+1,j])) # if the line by(i,j) is the grid 
-                by[i,j] = max(by[i,j], bmin)
-            end
-        end
-    end
-    
+
     # due to how the boundary is treated in the code, interia, damping or
     # power injection on boundary won't be taken into account
+    # this is just in case, but should'nt be need as parameters are not
+    # allowed to diffuse ouside of the grid
     m[.!isgrid] .= 0
     d[.!isgrid] .= 0
     pl[.!isgrid] .= 0
     pg[.!isgrid] .= 0
     
     # asign minimal values to the quantities
-    #m[isgrid] .= max.(m[isgrid], min_factor * maximum(m))
-    #d[isgrid] .= max.(d[isgrid], min_factor * maximum(d))
-    #pl[isgrid] .= max.(pl[isgrid], min_factor * maximum(pl))
-    #pg[isgrid] .= max.(pg[isgrid], min_factor * maximum(pg))
+    m[isgrid] .= max.(m[isgrid], min_factor * sum(m) / sum(isgrid))
+    d[isgrid] .= max.(d[isgrid], min_factor * sum(d) / sum(isgrid))
+    bx[isgrid] .= max.(bx[isgrid], min_factor * sum(bx) / sum(isgrid))
+    by[isgrid] .= max.(by[isgrid], min_factor * sum(by) / sum(isgrid))
     
     # ensure that the integrals of the different quantities over
     # the medium is equivalent to their sum over the discrete model
@@ -429,11 +351,48 @@ function get_params_diff(
     close(fid)
 
     # ensure that the integral of the power injection is 0, i.e
-    # that generation match the demand.
+    # that generation matches the demand.
     p = pg - pl 
-    p[isinside] = p[isinside] .- sum(p[isinside]) / sum(isinside)
+    p[isgrid] = p[isgrid] .- sum(p[isgrid]) / sum(isgrid)
 
     return bx, by, p, m, d
+end
+
+
+function heat_diff(
+    idin::Array{Int64, 2},
+    n::Array{Float64,2},
+    v0::Array{Float64,2};
+    Niter::Int64 = 5000,
+    tau::Float64 = 0.001,
+)
+    v_new = copy(v0)
+    v = copy(v0)
+    for t in 1:Niter
+        Threads.@threads for k in 1:size(idin, 1)
+            i = idin[k, 1]
+            j = idin[k, 2]
+            v_new[i, j] = (1.0 - 4.0 * tau) * v[i, j] + tau * (v[i+1, j] +
+                v[i-1, j] + v[i, j+1] + v[i, j-1])
+
+        end
+            
+        Threads.@threads for k in 1:size(n,1)
+            i = Int64(n[k,1])
+            j = Int64(n[k,2])
+            nx = n[k,4]
+            ny = n[k,3]
+            bij = (1 + ny) + (1 - ny) + (1 + nx) + (1 - nx)
+            v_new[i, j] = (1.0 - 4.0 * tau) * v[i, j] + tau * (
+                (1 - ny) * v[i+1, j] +
+                (1 - ny) * v[i-1, j] +
+                (1 - nx) * v[i, j+1] +
+                (1 + nx) *  v[i, j-1]
+            )
+        end
+        v = copy(v_new)
+    end
+    return v 
 end
 
 

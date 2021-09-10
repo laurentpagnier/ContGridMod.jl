@@ -100,7 +100,8 @@ function get_cont_values(
     xrange::Array{Float64, 1},
     disc_coord::Array{Float64, 2},
     disc_values::Array{Float64, 1};
-    Niter = 1000)
+    Niter = 1000
+)
     
     idin = findall(isinside)
     cont_coord = zeros(length(idin), 2)

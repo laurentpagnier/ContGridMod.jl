@@ -40,32 +40,19 @@ function compute_stable_sol(
                 i = Int64(n[k,1])
                 j = Int64(n[k,2])
                 
-                nx = n[k,4]
-                ny = n[k,3]
+                nx = n[k, 4]
+                ny = n[k, 3]
                 
-                bij = (1 + ny) * by[i-1, j] + (1 - ny) * by[i, j] +
-                    (1 + nx) * bx[i, j-1] + (1 - nx) * bx[i, j]
+                bij = (1.0 + ny) * by[i-1, j] + (1.0 - ny) * by[i, j] +
+                    (1.0 + nx) * bx[i, j-1] + (1.0 - nx) * bx[i, j]
 
                 th[i, j] = (
-                    (1 + ny) * by[i-1, j] * th[i-1, j] +
-                    (1 - ny) * by[i, j] * th[i+1, j] + 
-                    (1 + nx) * bx[i, j-1] * th[i, j-1] +
-                    (1 - nx) * bx[i, j] * th[i,j+1] +
+                    (1.0 + ny) * by[i-1, j] * th[i-1, j] +
+                    (1.0 - ny) * by[i, j] * th[i+1, j] + 
+                    (1.0 + nx) * bx[i, j-1] * th[i, j-1] +
+                    (1.0 - nx) * bx[i, j] * th[i, j+1] +
                     dx^2 * p[i, j]
                     ) / bij
-                
-                if(by[i-1, j] == 0)
-                    println("by_{" * string(i-1) * ", " * string(j )* "} = 0")
-                end 
-                if(by[i, j] == 0)
-                    println("by_{" * string(i) * ", " * string(j )* "} = 0")
-                end
-                if(bx[i-1, j] == 0)
-                    println("bx_{" * string(i) * "," * string(j-1)* "} = 0")
-                end 
-                if(bx[i, j] == 0)
-                    println("bx_{" * string(i) * "," * string(j )* "} = 0")
-                end
             end
             
             if(mod(t, interval) == 0)

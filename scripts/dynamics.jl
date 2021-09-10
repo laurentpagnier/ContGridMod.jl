@@ -54,8 +54,8 @@ function perform_dyn_sim(
                 j = Int64(n[k,2])
                 nx = n[k,4]
                 ny = n[k,3]
-                bij = (1 + ny) * by[i-1, j] + (1 - ny) * by[i, j] +
-                    (1 + nx) * bx[i, j-1] + (1 - nx) * bx[i, j]
+                bij = (1.0 + ny) * by[i-1, j] + (1.0 - ny) * by[i, j] +
+                    (1.0 + nx) * bx[i, j-1] + (1.0 - nx) * bx[i, j]
                 th_new[i, j] = (2.0 - bij / m[i, j] * dt^2 / dx^2) / chi[i, j] * th[i, j] + 
                     ( gamma[i, j] * dt / 2.0 - 1.0 ) / chi[i, j] * th_old[i, j] + 
                     dt^2 / dx^2 / chi[i, j] / m[i, j] * (

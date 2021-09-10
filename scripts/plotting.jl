@@ -25,9 +25,9 @@ function hm_plot(
     temp = copy(values)
     temp[.!isin] .= NaN
     if(clim == (0.0, 0.0))
-        return heatmap(xrange, yrange, temp, c = c)
+        return Plots.heatmap(xrange, yrange, temp, c = c)
     else
-        return heatmap(xrange, yrange, temp, c = c, clim = clim)
+        return Plots.heatmap(xrange, yrange, temp, c = c, clim = clim)
     end
 end
 
@@ -37,7 +37,8 @@ function time_plot(
     cont_value::Array{Float64, 3}, # timeseries from the continous model
     coord::Array{Float64, 2}; # locations from where we wantg to fetch data
     borders::Array{Array{Float64,2},1} = Array{Float64,2}[],
-    xlab::String = String("\$t[s]\$"),
+    xlabel::String = String("\$t\\;[s]\$"),
+    ylabel::String = String("\$\\omega \$"),
     tstart::Float64 = 0.0,
     tend::Float64 = 0.0
 )
@@ -68,7 +69,7 @@ function time_plot(
             p1 = plot!(time[idstart:idend], cont_value[idin[id][1], idin[id][2], idstart:idend])
         end
     end
-    plot!(legend = false)
+    plot!(legend = false, xlabel = xlabel, ylabel = ylabel)
      
     p2 = Plots.Plot()
     for k in 1:size(coord, 1)
