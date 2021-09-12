@@ -93,3 +93,51 @@ function perform_dyn_sim(
     end
     return ts, thetas, omegas
 end
+
+
+function perform_dyn_sim_vec(
+    bxflat::Array{Float64, 1},
+    byflat::Array{Float64, 1},
+    xneigh::SparseMatrixCSC{Float64, Int64},
+    yneigh::SparseMatrixCSC{Float64, Int64},
+    bflat::SparseMatrixCSC{Float64, Int64},
+    pflat::Array{Float64, 1},
+    minvflat::Array{Float64, 1},
+    gammaflat::Array{Float64, 1},
+    th0::Array{Float64, 1};
+    interval::Int64 = 100,
+    Ndt::Int64 = 15000,
+    dt = 0.0001
+)
+    println("Total time: ", dt * Ndt)
+
+    omegas = zeros(Ny * Nx, 1 + Int64(ceil(Ndt/interval)))
+    thetas = zeros(Ny * Nx, 1 + Int64(ceil(Ndt/interval)))
+    th_new = zeros(Ny * Nx)
+    #th_ref = [thstab[i,j] for i=1:Ny for j=1:Nx]
+    th_old = copy(th0)
+    th = copy(th0)
+    omegas[:,1] = zeros(size(th))
+    thetas[:,1] = copy(th0)  
+
+    ts = zeros(1 + Int64(ceil(Ndt/interval)))
+    chi = 1 ./ (1 .+ gammaflat*dt/2)
+
+    @time begin
+        for t in 1:Ndt
+            th_new = 2 * chi .* th - dt^2/dx^2 * minvflat .* chi .* (xneigh * bxflat + yneigh * byflat) .* th -
+            (1 .- gammaflat * dt / 2) .* chi .* th_old + (dt^2 / dx^2) * chi .* minvflat .* (bflat * th) +
+            dt^2 * chi .* minvflat .* pflat
+            if(mod(t,interval) == 0)
+                println("NIter: ", t)
+                omegas[:,Int64(t/interval) + 1] = (th_new-th) / dt
+                thetas[:,Int64(t/interval) + 1] = th_new
+                ts[Int64(t/interval) + 1] = t * dt
+            end
+            th_old = copy(th)
+            th = copy(th_new)
+        end
+    end
+    return ts, thetas, omegas
+end
+

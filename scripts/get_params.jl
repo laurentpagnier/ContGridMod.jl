@@ -132,6 +132,7 @@ function get_params(
     end
     =#
     
+    #=
     Threads.@threads for i=2:Ny-1
         Threads.@threads for j=2:Nx-1
             if(isgrid[i, j-1] & isgrid[i, j]) # if the line bx(i,j) is the grid
@@ -142,6 +143,10 @@ function get_params(
             end
         end
     end
+    =#
+    
+    bx[isgrid] .= max.(bx[isgrid], bmin)
+    by[isgrid] .= max.(by[isgrid], bmin)
     
     Threads.@threads for k in 1:size(n_vector,1)
         i = Int64(n_vector[k,1])

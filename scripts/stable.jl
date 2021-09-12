@@ -26,7 +26,7 @@ function compute_stable_sol(
             Threads.@threads for k in 1:size(idin, 1)
                 i = idin[k, 1]
                 j = idin[k, 2]
-                bij = (by[i-1, j] + by[i, j] + bx[i, j-1] + bx[i, j])
+                bij = by[i-1, j] + by[i, j] + bx[i, j-1] + bx[i, j]
                 th[i,j] = (
                     by[i, j] * th[i+1, j] +
                     by[i-1, j] * th[i-1, j] + 
@@ -43,8 +43,10 @@ function compute_stable_sol(
                 nx = n[k, 4]
                 ny = n[k, 3]
                 
-                bij = (1.0 + ny) * by[i-1, j] + (1.0 - ny) * by[i, j] +
-                    (1.0 + nx) * bx[i, j-1] + (1.0 - nx) * bx[i, j]
+                bij = (1.0 + ny) * by[i-1, j] +
+                    (1.0 - ny) * by[i, j] +
+                    (1.0 + nx) * bx[i, j-1] +
+                    (1.0 - nx) * bx[i, j]
 
                 th[i, j] = (
                     (1.0 + ny) * by[i-1, j] * th[i-1, j] +
