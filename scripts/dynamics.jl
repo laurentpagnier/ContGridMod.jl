@@ -96,6 +96,7 @@ end
 
 
 function perform_dyn_sim_vec(
+    isinsideflat::BitArray,
     bxflat::Array{Float64, 1},
     byflat::Array{Float64, 1},
     xneigh::SparseMatrixCSC{Float64, Int64},
@@ -114,7 +115,6 @@ function perform_dyn_sim_vec(
     omegas = zeros(Ny * Nx, 1 + Int64(ceil(Ndt/interval)))
     thetas = zeros(Ny * Nx, 1 + Int64(ceil(Ndt/interval)))
     th_new = zeros(Ny * Nx)
-    #th_ref = [thstab[i,j] for i=1:Ny for j=1:Nx]
     th_old = copy(th0)
     th = copy(th0)
     omegas[:,1] = zeros(size(th))
@@ -129,15 +129,24 @@ function perform_dyn_sim_vec(
             (1 .- gammaflat * dt / 2) .* chi .* th_old + (dt^2 / dx^2) * chi .* minvflat .* (bflat * th) +
             dt^2 * chi .* minvflat .* pflat
             if(mod(t,interval) == 0)
-                println("NIter: ", t)
                 omegas[:,Int64(t/interval) + 1] = (th_new-th) / dt
                 thetas[:,Int64(t/interval) + 1] = th_new
                 ts[Int64(t/interval) + 1] = t * dt
+                print("NIter: ", t, " Avg. Omega: ", mean(omegas[isinsideflat, Int64(t/interval) + 1]), "\n")
             end
             th_old = copy(th)
             th = copy(th_new)
         end
     end
-    return ts, thetas, omegas
+    # Rewrite omegas and thetas in 2d format
+    omegasre = zeros(Ny,Nx,1 + Int64(ceil(Ndt/interval)))
+    thetasre = zeros(Ny,Nx,1 + Int64(ceil(Ndt/interval)))
+    for i=1:1 + Int64(ceil(Ndt/interval))
+        for j=1:Nx*Ny
+            omegasre[(j-1) % Ny + 1, (j-1) ÷ Ny + 1, i] = omegas[j, i]
+            thetasre[(j-1) % Ny + 1, (j-1) ÷ Ny + 1, i] = omegas[j, i]
+        end
+    end
+    return ts, thetasre, omegasre
 end
 
