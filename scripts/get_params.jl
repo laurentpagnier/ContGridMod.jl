@@ -15,7 +15,7 @@ function get_params(
 )
     gen, dem, bline, idb, idgen, coord, mg, dg, dl, th = load_discrete_model(dataname::String)
     
-    isgrid = isinside .| isborder
+    isgrid = BitArray(isinside + isborder)
     
     Nx = length(xrange)
     Ny = length(yrange)
@@ -58,41 +58,42 @@ function get_params(
     # given by y = beta*(-dy,dx) + c. The point where the two line cross
     # each other is given by y = x. Solving for beta and alpha, the
     # distance separating the point c and the line ab is beta*sqrt(dy^2+dx^2) 
-    isnew = true
-    for l in 1:size(idb, 1)
+    Threads.@threads for l in 1:size(idb, 1)
         x2 = coord[idb[l, 2], 1]
         x1 = coord[idb[l, 1], 1]
         y2 = coord[idb[l, 2], 2]
         y1 = coord[idb[l, 1], 2] 
         dx_l = x2 - x1
         dy_l = y2 - y1
-        ds2 = (dy_l^2 + dx_l^2)
         phi = atan(dy_l, dx_l)
-        if(dx_l != 0 && dy_l != 0) # if not a transformer
-            Threads.@threads for i = 2:Ny-1
-                Threads.@threads for j = 2:Nx-1
-                    if(isgrid[i,j] && isgrid[i,j+1]) # if the line bx(i,j) is the grid                     
+        ds2 = dx_l^2 + dy_l^2
+        if (dx_l != 0 && dy_l != 0) # if not a transformer
+            Threads.@threads for i = 1:Ny-1
+                Threads.@threads for j = 1:Nx-1
+                    if (isgrid[i,j]) # if the line bx(i,j) is the grid                     
                         # we set the coordinates of the lines to be the ones of their middle points
                         bx_x = (xrange[j] + xrange[j+1]) / 2
                         bx_y = yrange[i]
-                        beta = (dx_l*(y1 - bx_y) + dy_l*(bx_x- x1)) / ds2
-                        alpha = (dx_l*(bx_x - x1) + dy_l*(bx_y - y1)) / ds2
+                        beta = (dx_l * (y1 - bx_y) + dy_l * (bx_x - x1)) / ds2
+                        alpha = (dx_l * (bx_x - x1) + dy_l * (bx_y - y1)) / ds2
                         # if the projection is in the segment ab
-                        if((0 < alpha) & (alpha < 1))
-                            dist = abs(beta) * sqrt(ds2) 
+                        if ((0 < alpha) & (alpha < 1))
+                            dist = abs(beta) * sqrt(dx_l^2 + dy_l^2)
                             # if close enough to the line 
-                            f = exp(-dist^2/2/sigma^2)/sigma^2 / (2*pi)
-                            bx[i, j] += bline[l] * abs(cos(phi)) * f * dx^2 * patch 
-                        # else close enough to an end of the line 
+                            f = exp(-dist^2 / 2 / sigma^2) / sigma^2 / (2 * pi)
+                            bx[i, j] += bline[l] * abs(cos(phi)) * f * dx^2 * patch
+                            # else close enough to an end of the line 
                         else
-                            dist = min((bx_y - y1)^2 + (bx_x - x1)^2,
-                            (bx_y - y2)^2 + (bx_x - x2)^2)
-                            f = exp(-dist / 2 / sigma^2) / sigma^2 / (2*pi)
+                            dist = min(
+                                (bx_y - y1)^2 + (bx_x - x1)^2,
+                                (bx_y - y2)^2 + (bx_x - x2)^2,
+                            )
+                            f = exp(-dist / 2 / sigma^2) / sigma^2 / (2 * pi)
                             bx[i, j] += bline[l] * abs(cos(phi)) * f * dx^2 * patch
                         end
                     end
                     
-                    if(isgrid[i, j] && isgrid[i+1, j]) # if the line by(i,j) is the grid 
+                    if(isgrid[i, j]) # if the line by(i,j) is the grid 
                         # we set the coordinates of the lines to be the ones of their middle points
                         by_x = xrange[j]
                         by_y = (yrange[i] + yrange[i+1]) / 2      
@@ -148,18 +149,18 @@ function get_params(
     bx[isgrid] .= max.(bx[isgrid], bmin)
     by[isgrid] .= max.(by[isgrid], bmin)
     
-    Threads.@threads for k in 1:size(n_vector,1)
-        i = Int64(n_vector[k,1])
-        j = Int64(n_vector[k,2])
+    # Threads.@threads for k in 1:size(n_vector,1)
+    #     i = Int64(n_vector[k,1])
+    #     j = Int64(n_vector[k,2])
                 
-        nx = n_vector[k,4]
-        ny = n_vector[k,3]
+    #     nx = n_vector[k,4]
+    #     ny = n_vector[k,3]
         
-        by[i-1, j] = ny * (1 + ny) / 2  * by[i-2, j]
-        by[i, j] = ny * (ny - 1) / 2 * by[i+1, j]
-        bx[i, j-1] = nx * (1 + nx) / 2 * by[i, j-2]
-        bx[i, j] = nx * (nx - 1) / 2 * by[i, j+1]
-    end
+    #     by[i-1, j] = ny * (1 + ny) / 2  * by[i-2, j]
+    #     by[i, j] = ny * (ny - 1) / 2 * by[i+1, j]
+    #     bx[i, j-1] = nx * (1 + nx) / 2 * by[i, j-2]
+    #     bx[i, j] = nx * (nx - 1) / 2 * by[i, j+1]
+    # end
     # due to how the boundary is treated in the code, interia, damping or
     # power injection on boundary won't be taken into account
     m[.!isgrid] .= 0
