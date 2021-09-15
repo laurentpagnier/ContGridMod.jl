@@ -1,3 +1,4 @@
 notebooks/.ipynb_checkpoints*
 numerics*
 notebooks/tmp.gif
+.DS_Store
