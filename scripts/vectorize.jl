@@ -42,7 +42,7 @@ function vectorize(
     #Threads.@threads for k in 1:size(n, 1)
     for k in 1:size(n, 1)
         # with Nx goes out of bound
-        i = (Int64(n[k, 2]) - 1) * Ny + Int64(n[k, 1])
+        i = (Int64(n[k, 1]) - 1) * Ny + Int64(n[k, 2])
         nx = n[k, 4] 
         ny = n[k, 3]
         xneigh[i, i - Ny] = (1 + nx) # this won't store anything if fed with 0

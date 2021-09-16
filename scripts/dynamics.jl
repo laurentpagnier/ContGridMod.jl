@@ -156,3 +156,74 @@ function perform_dyn_sim_vec(
     return ts, thetasre, omegasre
 end
 
+
+
+
+function perform_dyn_sim_vec_crank_nicolson(
+    isinsideflat::BitArray,
+    bxflat::Array{Float64, 1},
+    byflat::Array{Float64, 1},
+    xneigh::SparseMatrixCSC{Float64, Int64},
+    yneigh::SparseMatrixCSC{Float64, Int64},
+    bflat::SparseMatrixCSC{Float64, Int64},
+    pflat::Array{Float64, 1},
+    minvflat::Array{Float64, 1},
+    gammaflat::Array{Float64, 1},
+    th0::Array{Float64, 1};
+    interval::Int64 = 10,
+    Ndt::Int64 = 1000,
+    dt = 0.05
+)
+    println("Total time: ", dt * Ndt)
+
+    omegas = zeros(Ny * Nx, 1 + Int64(ceil(Ndt/interval)))
+    thetas = zeros(Ny * Nx, 1 + Int64(ceil(Ndt/interval)))
+    th_new = zeros(Ny * Nx)
+    th_old = copy(th0)
+    th = copy(th0)
+    omegas[:,1] = zeros(size(th))
+    thetas[:,1] = copy(th0)  
+
+    ts = zeros(1 + Int64(ceil(Ndt/interval)))
+    chi = 1 ./ (1 .+ gammaflat*dt/2)
+    
+    Nn = sum(isflat)
+
+    omegas = zeros(Nx * Ny,1 + Int64(ceil(Ndt/interval)))
+    ts = zeros(1 + Int64(ceil(Ndt/interval)))
+    th = [copy(vec(th0)[isflat]); zeros(Nn)]
+
+
+    I = sparse(1:Nn, 1:Nn, ones(Nn))
+    
+    #C = [I dt / 2 * I;
+    #    dt / 2 * A/dx^2 (I - dt/2 * sparse(1:Nn, 1:Nn, gammaflat))]
+    #D = [I -dt/2 * I;
+    #   -dt/2 * A / dx^2 (I + dt/2 * sparse(1:Nn, 1:Nn, gammaflat))]
+    #P = [zeros(Nn); dt * mflat * pflat[isflat]]
+    
+    #C = [Matrix(1.0I, Nn, Nn) Matrix(dt/2 * I, Nn, Nn);
+    #    dt / 2 * A[isflat, isflat] / dx^2 (-dt/2 * Diagonal(dflat./mflat) + Matrix(1.0I, Nn, Nn))]
+    #D = [Matrix(1.0I, Nn, Nn) Matrix(-dt/2 * I, Nn, Nn);
+    #    -dt/2 * A[isflat, isflat] / dx^2 (dt/2 * Diagonal(dflat./mflat) + Matrix(1.0I, Nn, Nn))]
+    #P = [zeros(Nn); dt * (pflat[isflat] .+ dpflat[isflat]) ./ mflat]
+
+    @time begin
+        for t in 1:Ndt
+            v = C * th + P
+            th = D\v
+            if(mod(t,interval) == 0)
+                omegas[isflat,Int64(t/interval) + 1] = th[Nn+1:end]
+                ts[Int64(t/interval) + 1] = t*dt
+            end
+        end
+    end
+    # Rewrite omegas and thetas in 2d format
+    omegasre = zeros(Ny,Nx,1 + Int64(ceil(Ndt/interval)))
+    for i=1:1 + Int64(ceil(Ndt/interval))
+        for j=1:Nx*Ny
+            omegasre[(j-1) % Ny + 1, (j-1) ÷ Ny + 1, i] = omegas[j, i]
+        end
+    end
+    return ts, thetasre, omegasre
+end
