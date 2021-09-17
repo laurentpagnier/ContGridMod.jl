@@ -4,12 +4,13 @@
 \usepackage{amsmath}
 \usepackage{bm}
 \usepackage{bbold}
-
+\usepackage{xcolor}
+\usepackage{cancel}
+\renewcommand{\CancelColor}{\color{red}}
 \begin{document}
 \title{Doc: continuous models}
 \author{Laurent Pagnier and Julian Fritzsch}
 \maketitle
-
 
 \begin{equation}
 m(\bm x)\frac{\partial^2}{\partial t^2}\theta(\bm x,t)+d(\bm x)\frac{\partial}{\partial t}\theta(\bm x,t)=p(\bm x,t)+\bm\nabla\cdot\big[\bm b(\bm x)\circ\bm\nabla\theta(\bm x,t)\big]\,,
@@ -71,12 +72,12 @@ b_x(x)\partial_x \theta(x) = 0
 \end{equation}
 
 \begin{align}
-b_x(x+\Delta x)\theta(x+\Delta x) &= b_x(x)\theta(x) + \Big(\partial_x b_x(x) \theta(x)+ b_x(x)\partial_x \theta(x)\Big)\Delta x + (\cdots)\Delta x^2/2 + O(\Delta x^3)\\
-b_x(x+2\Delta x)\theta(x+2\Delta x) &= b_x(x)\theta(x) + \Big(\partial_x b_x(x)\theta(x)+ b_x(x)\partial_x \theta(x)\Big)2\Delta x + 2(\cdots)\Delta x^2 + O(\Delta x^3)
+b_x(x+\Delta x)\theta(x+\Delta x) &= b_x(x)\theta(x) + \Big(\partial_x b_x(x) \theta(x)+ \cancelto{0,\text{ b.c.}}{b_x(x)\partial_x \theta(x)}\Big)\Delta x + (\cdots)\Delta x^2/2 + O(\Delta x^3)\\
+b_x(x+2\Delta x)\theta(x+2\Delta x) &= b_x(x)\theta(x) + \Big(\partial_x b_x(x)\theta(x)+ \cancelto{0,\text{ b.c.}}{b_x(x)\partial_x \theta(x)}\Big)2\Delta x + 2(\cdots)\Delta x^2 + O(\Delta x^3)
 \end{align}
 (From the 1st equation, we get
 \begin{equation}
-\theta_{i,j}=\frac{(b^x_{i,j}+b^x_{i,j+1})\theta_{i,j+1}}{3 b^x_{i,j}}+O(\Delta x^2)
+\theta_{i,j}=\frac{(b^x_{i,j}+b^x_{i,j+1})\theta_{i,j+1}}{3 b^x_{i,j} {\color{red}- b^x_{i,j-1}}}+O(\Delta x^2)
 \end{equation}
 which is not exactly what was implemented. It might be enough to change that...)
 Summing four times the 1st equation with minus the second, one gets
@@ -84,11 +85,31 @@ Summing four times the 1st equation with minus the second, one gets
 \theta(x) = \frac{4b_x(x+\Delta x)\theta(x+\Delta x)-b_x(x+2\Delta x)\theta(x+2\Delta x)}{3b_x(x)+2\Delta x\partial_xb_x}+O(\Delta x^3)
 \end{equation}
 Converting this expression with Eqs. 4-7, we get
-\begin{equation}
+\begin{equation}\label{eq:thetanx}
 \theta_{i,j} = \frac{4(b^x_{i,j}+b^x_{i,j+1})\theta_{i,j+1} - (b^x_{i,j+1}+b^x_{i,j+2})\theta_{i,j+2}}{3(b^x_{i,j-1}+b^x_{i,j})+4(b^x_{i,j}-b^x_{i,j-1})}
 \end{equation}
-What to do? Set $b^x_{i,j-1}$ to $0$ or to $b^x_{i,j}$!? (My opinion is that we should set it to 0.)
-Now treating the full case, lets first define 
+What to do? Set $b^x_{i,j-1}$ to $0$ or to $b^x_{i,j}$!? (My opinion is that we should set it to 0. {\color{red}I agree with that.})
+
+{\color{red}Analogously we obtain for $n_x=1$ we obtain by changing $\Delta x \to - \Delta x$
+\begin{equation}
+    \theta_{i,j}=\frac{4(b^x_{i,j-2}+b^x_{i,j-1})\theta_{i,j-1}-(b^x_{i,j-3}+b^x_{i,j-2})\theta_{i,j-2}}{3(b^x_{i,j-1}+b^x_{i,j})-4(b^x_{i,j}-b^x_{i,j-1})}
+\end{equation}
+In this case we should set $b^x_{i,j}=0$.
+
+For the corners we can use ($n_x=-1$, $n_y=-1$)
+\begin{align}
+    \begin{split}
+    &b_x(x+\Delta, y)\theta(x+\Delta, y) + b_y(x, y + \Delta)\theta(x, y+ \Delta) = (b_x(x,y) + b_y(x,y))\theta(x,y) + \\
+    &\big(b_x(x,y)\cancelto{0, b.c.}{\partial_x\theta(x,y) + b_y(x,y)\partial_y\theta(x,y)} + b_x(x,y)\partial_y\theta(x,y) + b_y(x,y)\partial_x\theta(x,y)\big)\Delta + (\dots)\Delta^2/2 + \mathcal{O}(\Delta^3),
+    \end{split}\\
+    \begin{split}
+        &b_x(x+2\Delta, y)\theta(x+2\Delta, y) + b_y(x, y + 2\Delta)\theta(x, y+ 2\Delta) = (b_x(x,y) + b_y(x,y))\theta(x,y) + \\
+        &2\big(b_x(x,y)\cancelto{0, b.c.}{\partial_x\theta(x,y) + b_y(x,y)\partial_y\theta(x,y)} + b_x(x,y)\partial_y\theta(x,y) + b_y(x,y)\partial_x\theta(x,y)\big)\Delta + 2(\dots)\Delta^2 + \mathcal{O}(\Delta^3)
+        \end{split}
+\end{align}
+This means for the corners the $\theta_{i,j}$ is given by the sum of~\eqref{eq:thetanx} and its $y$ equivalent.}
+
+Now treating the full case {\color{red}(setting the $b$ outside the grid to 0)}, lets first define 
 \begin{equation}
 \eta_{\pm}(x) = 1\pm x/2 -x^2/2\,,
 \end{equation}
