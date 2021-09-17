@@ -38,7 +38,7 @@ b_x(\bm x)&\approx\frac{b^x_{i,j-1}+b^x_{i,j}}{2}\,,\\
 So, finally
 \begin{align}
 &\partial_xb_x\partial_x\theta+b_x\partial_x^2\theta +\partial_yb_y\partial_y\theta+b_y\partial_y^2\theta\approx\\
-&\frac{b^x_{i,j-1}\theta_{i,j-1}+b^x_{i,j}\theta_{i,j+1}+b^y_{i-1,j}\theta_{i-1,j}+b^y_{i,j}\theta_{i+1,j}-\big(b^x_{i,j-1}+b^x_{i,j}+ b^x_{i-1,j}+b^y_{i,j}\big)\theta_{i,j}}{\Delta x^2}\,,
+&\frac{b^x_{i,j-1}\theta_{i,j-1}+b^x_{i,j}\theta_{i,j+1}+b^y_{i-1,j}\theta_{i-1,j}+b^y_{i,j}\theta_{i+1,j}-\overbrace{\big(b^x_{i,j-1}+b^x_{i,j}+ b^x_{i-1,j}+b^y_{i,j}\big)}^{=\beta}\theta_{i,j}}{\Delta x^2}\,,
 \end{align}
 \section{Steady State}
 Steady state is obtained iteratively as
@@ -74,6 +74,11 @@ b_x(x)\partial_x \theta(x) = 0
 b_x(x+\Delta x)\theta(x+\Delta x) &= b_x(x)\theta(x) + \Big(\partial_x b_x(x) \theta(x)+ b_x(x)\partial_x \theta(x)\Big)\Delta x + (\cdots)\Delta x^2/2 + O(\Delta x^3)\\
 b_x(x+2\Delta x)\theta(x+2\Delta x) &= b_x(x)\theta(x) + \Big(\partial_x b_x(x)\theta(x)+ b_x(x)\partial_x \theta(x)\Big)2\Delta x + 2(\cdots)\Delta x^2 + O(\Delta x^3)
 \end{align}
+(From the 1st equation, we get
+\begin{equation}
+\theta_{i,j}=\frac{(b^x_{i,j}+b^x_{i,j+1})\theta_{i,j+1}}{3 b^x_{i,j}}+O(\Delta x^2)
+\end{equation}
+which is not exactly what was implemented. It might be enough to change that...)
 Summing four times the 1st equation with minus the second, one gets
 \begin{equation}
 \theta(x) = \frac{4b_x(x+\Delta x)\theta(x+\Delta x)-b_x(x+2\Delta x)\theta(x+2\Delta x)}{3b_x(x)+2\Delta x\partial_xb_x}+O(\Delta x^3)
@@ -83,14 +88,16 @@ Converting this expression with Eqs. 4-7, we get
 \theta_{i,j} = \frac{4(b^x_{i,j}+b^x_{i,j+1})\theta_{i,j+1} - (b^x_{i,j+1}+b^x_{i,j+2})\theta_{i,j+2}}{3(b^x_{i,j-1}+b^x_{i,j})+4(b^x_{i,j}-b^x_{i,j-1})}
 \end{equation}
 What to do? Set $b^x_{i,j-1}$ to $0$ or to $b^x_{i,j}$!? (My opinion is that we should set it to 0.)
-%which leads to
-%\begin{equation}
-%\th eta_{i,j} = \frac{n_x\big[(n_x+1)b_{i,j-1|i,j}\theta_{i,j-1}+(n_x-1)b_{i,j|i,j+1}\theta_{i,j+1}\big]+
-%%%
-%n_y\big[(n_y+1)b_{i-1,j|i,j}\theta_{i-1,j}+(n_y-1)b_{i,j|i+1,j}\theta_{i+1,j}\big]}
-%%%
-%{n_x\big[(n_x+1)b_{i,j-1|i,j}+(n_x-1)b_{i,j|i,j+1}\big]+n_y\big[(n_y+1)b_{i-1,j|i,j}+(n_y-1)b_{i,j|i+1,j}\big]}\,,
-%\end{equation}
+Now treating the full case, lets first define 
+\begin{equation}
+\eta_{\pm}(x) = 1\pm x/2 -x^2/2\,,
+\end{equation}
+Note that $\eta_{+}(-1)=0$, $\eta_{+}(0)=1$, $\eta_{+}(1)=1$, $\eta_{-}(-1)=1$, $\eta_{-}(0)=1$ and $\eta_{-}(1)=0$.
+\begin{equation}
+\beta=\eta_{+}(n_x)b^x_{i,j-1}+\eta_{-}(n_x)b^x_{i,j}+\eta_{+}(n_y)b^y_{i,j-1}+\eta_{-}(n_y)b^y_{i,j}\,,
+\end{equation}
+
+
 
 
 \section{Vectorization}
@@ -117,11 +124,13 @@ i,j+1 &\rightarrow k+N_y\,,
 %%
 +b^y_{i,j}\theta_{i+1,j}\,,
 \end{equation}
+The function $\bm \xi(\bm \theta)$ can be represented as a matrix acting on the flattened $\bm{\tilde \theta}$,
 \begin{equation}
-\bm \xi(\bm \theta) =\bm \Xi\, \bm{\tilde\theta}
+\bm \xi(\bm \theta) =\bm \Xi\, \bm{\tilde\theta}\,.
 \end{equation}
+The elements of $\bm \Xi$ read
 \begin{equation}
-\Xi_{kl} = \big(\tilde b^x_{k}+\tilde b^x_{k-N_y}+\tilde b^y_{k}+\tilde b^y_{k-1}\big)\delta_{k,l}
+\Xi_{kl} = -\big(\tilde b^x_{k}+\tilde b^x_{k-N_y}+\tilde b^y_{k}+\tilde b^y_{k-1}\big)\delta_{k,l}
 %%
 +\tilde b^{x}_{k-N_y}\delta_{k-N_y,l}
 %%
