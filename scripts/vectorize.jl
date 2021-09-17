@@ -1,5 +1,6 @@
 function vectorize(
     isinside::BitMatrix,
+    isborder::BitMatrix,
     n::Array{Float64, 2},
     bx::Array{Float64, 2},
     by::Array{Float64, 2},
@@ -7,60 +8,104 @@ function vectorize(
     m::Array{Float64, 2},
     d::Array{Float64, 2},
 )
-
     # flatten the m, d, p, bx and by matrices
-    # is equivalent to x = vec(reshape(x, Nx*Ny, 1))
     isinsideflat = vec(isinside)
+    isgridflat = vec(isinside .| isborder)
     bxflat = vec(bx)
     byflat = vec(by)
     pflat = vec(p)
     mflat = vec(m)
     dflat = vec(d)
+    Ny = size(bx,1)
+    Nx = size(bx,2)
+    xi = sparse([], [], Float64.([]), Ny * Nx, Ny * Nx)
 
-
-    # ?? neighbours along x ??
-    xneigh = sparse([], [], Float64.([]), Ny * Nx, Ny * Nx)
-    # ?? neighbours along x ??
-    yneigh = sparse([], [], Float64.([]), Ny * Nx, Ny * Nx)
-    # ?? b stuff ??
-    bflat = sparse([], [], Float64.([]), Ny * Nx, Ny * Nx)
-    
     #Threads.@threads for i in 1:Nx*Ny
-    for i in 1:Nx*Ny
-        if(isinsideflat[i])
-            xneigh[i, i] = 1.0
-            xneigh[i, i - Ny] = 1.0
-            yneigh[i, i] = 1.0
-            yneigh[i, i - 1] = 1.0
-            bflat[i, i-Ny] = bxflat[i-Ny]
-            bflat[i, i+Ny] = bxflat[i]
-            bflat[i, i-1] = byflat[i-1]
-            bflat[i, i+1] = byflat[i]
+    for k in 1:Nx*Ny
+        if(isinsideflat[k])
+            xi[k, k] = - bxflat[k] - bxflat[k-Ny] -
+                byflat[k] - byflat[k-1]
+            xi[k, k-Ny] = bxflat[k-Ny]
+            xi[k, k+Ny] = bxflat[k]
+            xi[k, k-1] = byflat[k-1]
+            xi[k, k+1] = byflat[k]
         end
     end
     
     #Threads.@threads for k in 1:size(n, 1)
-    for k in 1:size(n, 1)
-        # with Nx goes out of bound
-        i = (Int64(n[k, 1]) - 1) * Ny + Int64(n[k, 2])
-        nx = n[k, 4] 
-        ny = n[k, 3]
-        xneigh[i, i - Ny] = (1 + nx) # this won't store anything if fed with 0
-        xneigh[i, i] = (1 - nx)
-        yneigh[i, i - 1] = (1 + ny)
-        yneigh[i, i] = (1 - ny)
-        bflat[i, i-Ny] = (1 + nx) * bxflat[i-Ny]
-        bflat[i, i+Ny] = (1 - nx) * bxflat[i]
-        bflat[i, i-1] = (1 + ny) * byflat[i-1]
-        bflat[i, i+1] = (1 - ny) * byflat[i]
+    for id in 1:size(n, 1)
+        k = (Int64(n[id, 2]) - 1) * Ny + Int64(n[id, 1])
+        ny = n[id, 3]
+        nx = n[id, 4] 
+        
+        xi[k, k] = - (1.0 - nx) * bxflat[k] - (1.0 + nx) * bxflat[k-Ny] -
+            (1.0 - ny) * byflat[k] - (1.0 + ny) * byflat[k-1]
+        xi[k, k-Ny] = (1.0 + nx) * bxflat[k-Ny]
+        xi[k, k+Ny] = (1.0 - nx) * bxflat[k]
+        xi[k, k-1] = (1.0 + ny) * byflat[k-1]
+        xi[k, k+1] = (1.0 - ny) * byflat[k]
     end  
     
     minvflat = mflat.^(-1)
-    minvflat = replace!(minvflat, Inf=>0)
-    gammaflat = dflat .* minvflat
-    #return isinsideflat, bxflat, byflat, pflat, mflat, dflat, bflat, xneigh, yneigh
-    return isinsideflat, bxflat, byflat, pflat, minvflat, gammaflat,
-        SparseMatrixCSC{Float64, Int64}(bflat),
-        SparseMatrixCSC{Float64, Int64}(xneigh),
-        SparseMatrixCSC{Float64, Int64}(yneigh)
+    minvflat = minvflat[isgridflat]
+    gammaflat = dflat[isgridflat] .* minvflat
+    xi = SparseMatrixCSC{Float64, Int64}(xi[isgridflat,isgridflat])
+    return isinsideflat, pflat, minvflat, gammaflat, xi
 end
+
+function vectorize_ref(
+    isinside::BitMatrix,
+    isborder::BitMatrix,
+    n::Array{Float64, 2},
+    bx::Array{Float64, 2},
+    by::Array{Float64, 2},
+    p::Array{Float64, 2},
+    m::Array{Float64, 2},
+    d::Array{Float64, 2},
+)
+    # flatten the m, d, p, bx and by matrices
+    isinsideflat = vec(isinside)
+    isgridflat = vec(isinside .| isborder)
+    bxflat = vec(bx)
+    byflat = vec(by)
+    pflat = vec(p)
+    mflat = vec(m)
+    dflat = vec(d)
+    Ny = size(bx,1)
+    Nx = size(bx,2)
+    xi = sparse([], [], Float64.([]), Ny * Nx, Ny * Nx)
+
+    #Threads.@threads for i in 1:Nx*Ny
+    for k in 1:Nx*Ny
+        if(isinsideflat[k])
+            xi[k, k] = - bxflat[k] - bxflat[k-Ny] -
+                byflat[k] - byflat[k-1]
+            xi[k, k-Ny] = bxflat[k-Ny]
+            xi[k, k+Ny] = bxflat[k]
+            xi[k, k-1] = byflat[k-1]
+            xi[k, k+1] = byflat[k]
+        end
+    end
+    
+    #Threads.@threads for k in 1:size(n, 1)
+    for id in 1:size(n, 1)
+        k = (Int64(n[id, 2]) - 1) * Ny + Int64(n[id, 1])
+        ny = n[id, 3]
+        nx = n[id, 4] 
+        
+        xi[k, k] = - (1.0 - nx) * bxflat[k] - (1.0 + nx) * bxflat[k-Ny] -
+            (1.0 - ny) * byflat[k] - (1.0 + ny) * byflat[k-1]
+        xi[k, k-Ny] = (1.0 + nx) * bxflat[k-Ny]
+        xi[k, k+Ny] = (1.0 - nx) * bxflat[k]
+        xi[k, k-1] = (1.0 + ny) * byflat[k-1]
+        xi[k, k+1] = (1.0 - ny) * byflat[k]
+    end  
+    
+    minvflat = mflat.^(-1)
+    minvflat = minvflat[isgridflat]
+    gammaflat = dflat[isgridflat] .* minvflat
+    xi = SparseMatrixCSC{Float64, Int64}(xi[isgridflat,isgridflat])
+    return isinsideflat, pflat, minvflat, gammaflat, xi
+end
+
+

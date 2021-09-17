@@ -159,8 +159,6 @@ function get_cont_values(
             end
         end
     end
-    
-    
     return cont_values
 end
 
@@ -179,4 +177,12 @@ function find_time_step(isin::BitMatrix, m::Array{Float64,2}, d::Array{Float64,2
     gamma = d ./ m
     println(alpha*dx^2*minimum(m[isin] ./ bij[isin]))
     println(alpha*minimum(d[isin] ./ abs.(p[isin])))
+end
+
+function back_to_2d(isgrid::BitMatrix, valueflat::Array{Float64,2})
+    value = zeros(size(isgrid, 1), size(isgrid, 2), size(valueflat, 2))
+    for t in 1:size(valueflat, 2)
+        value[isgrid, t] .= valueflat[:, t]
+    end
+    return value
 end

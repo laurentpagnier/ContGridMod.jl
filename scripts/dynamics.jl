@@ -95,13 +95,10 @@ function perform_dyn_sim(
 end
 
 
+
 function perform_dyn_sim_vec(
-    isinsideflat::BitArray,
-    bxflat::Array{Float64, 1},
-    byflat::Array{Float64, 1},
-    xneigh::SparseMatrixCSC{Float64, Int64},
-    yneigh::SparseMatrixCSC{Float64, Int64},
-    bflat::SparseMatrixCSC{Float64, Int64},
+    isgridflat::BitArray,
+    xi::SparseMatrixCSC{Float64, Int64},
     pflat::Array{Float64, 1},
     minvflat::Array{Float64, 1},
     gammaflat::Array{Float64, 1},
@@ -111,61 +108,48 @@ function perform_dyn_sim_vec(
     dt = 0.0001
 )
     println("Total time: ", dt * Ndt)
-
-    omegas = zeros(Ny * Nx, 1 + Int64(ceil(Ndt/interval)))
-    thetas = zeros(Ny * Nx, 1 + Int64(ceil(Ndt/interval)))
-    th_new = zeros(Ny * Nx)
-    th_old = copy(th0)
-    th = copy(th0)
+    N = sum(isgridflat)
+    M = 1 + Int64(ceil(Ndt/interval))
+    omegas = zeros(N, M)
+    thetas = zeros(N, M)
+    th_new = zeros(N)
+    ts = zeros(M)
+    
+    th_old = copy(th0[isgridflat])
+    th = copy(th0[isgridflat])
     omegas[:,1] = zeros(size(th))
-    thetas[:,1] = copy(th0)  
+    thetas[:,1] = copy(th0[isgridflat])  
 
-    ts = zeros(1 + Int64(ceil(Ndt/interval)))
     chi = 1 ./ (1 .+ gammaflat*dt/2)
-    println(maximum(chi[isinsideflat]))
-    println(minimum(chi[isinsideflat]))
 
-    A = (2 * chi - dt^2/dx^2 * minvflat .* chi .* (xneigh * bxflat + yneigh * byflat))
+    A = (2 * chi - dt^2/dx^2 * minvflat)
     B = (1 .- gammaflat * dt / 2) .* chi
-    C = (dt^2 / dx^2) * chi .* minvflat
-    D = dt^2 * chi .* minvflat .* pflat
+    C = dt^2 * chi .* minvflat .* pflat
     
     @time begin
         for t in 1:Ndt
-            th_new = A .* th -
-            B .* th_old + C .* (bflat * th) + D
+            th_new = 2 * chi .* th +
+                dt^2 / dx^2 .* minvflat .* chi .* (xi * th) -
+                B .* th_old + C
             if(mod(t,interval) == 0)
                 omegas[:,Int64(t/interval) + 1] = (th_new-th) / dt
                 thetas[:,Int64(t/interval) + 1] = th_new
                 ts[Int64(t/interval) + 1] = t * dt
-#                 print("NIter: ", t, " Avg. Omega: ", mean(omegas[isinsideflat, Int64(t/interval) + 1]), "\n")
+                println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1])/sum(isgridflat))
             end
             th_old = copy(th)
             th = copy(th_new)
         end
     end
-    # Rewrite omegas and thetas in 2d format
-    omegasre = zeros(Ny,Nx,1 + Int64(ceil(Ndt/interval)))
-    thetasre = zeros(Ny,Nx,1 + Int64(ceil(Ndt/interval)))
-    for i=1:1 + Int64(ceil(Ndt/interval))
-        for j=1:Nx*Ny
-            omegasre[(j-1) % Ny + 1, (j-1) ÷ Ny + 1, i] = omegas[j, i]
-            thetasre[(j-1) % Ny + 1, (j-1) ÷ Ny + 1, i] = omegas[j, i]
-        end
-    end
-    return ts, thetasre, omegasre
+
+    return ts, thetas, omegas
 end
 
 
 
-
 function perform_dyn_sim_vec_crank_nicolson(
-    isinsideflat::BitArray,
-    bxflat::Array{Float64, 1},
-    byflat::Array{Float64, 1},
-    xneigh::SparseMatrixCSC{Float64, Int64},
-    yneigh::SparseMatrixCSC{Float64, Int64},
-    bflat::SparseMatrixCSC{Float64, Int64},
+    isgridflat::BitArray,
+    xi::SparseMatrixCSC{Float64, Int64},
     pflat::Array{Float64, 1},
     minvflat::Array{Float64, 1},
     gammaflat::Array{Float64, 1},
@@ -175,55 +159,80 @@ function perform_dyn_sim_vec_crank_nicolson(
     dt = 0.05
 )
     println("Total time: ", dt * Ndt)
-
-    omegas = zeros(Ny * Nx, 1 + Int64(ceil(Ndt/interval)))
-    thetas = zeros(Ny * Nx, 1 + Int64(ceil(Ndt/interval)))
-    th_new = zeros(Ny * Nx)
-    th_old = copy(th0)
-    th = copy(th0)
-    omegas[:,1] = zeros(size(th))
-    thetas[:,1] = copy(th0)  
+    N = sum(isgridflat)
+    M = 1 + Int64(ceil(Ndt/interval))
+    omegas = zeros(N, M)
+    thetas = zeros(N, M)
+    ts = zeros(M)
+    
+    x = [zeros(N); th0[isgridflat]]
+    omegas[:, 1] = zeros(N)
+    thetas[:, 1] = copy(th0[isgridflat])  
 
     ts = zeros(1 + Int64(ceil(Ndt/interval)))
-    chi = 1 ./ (1 .+ gammaflat*dt/2)
-    
-    Nn = sum(isflat)
 
-    omegas = zeros(Nx * Ny,1 + Int64(ceil(Ndt/interval)))
-    ts = zeros(1 + Int64(ceil(Ndt/interval)))
-    th = [copy(vec(th0)[isflat]); zeros(Nn)]
-
-
-    I = sparse(1:Nn, 1:Nn, ones(Nn))
-    
-    #C = [I dt / 2 * I;
-    #    dt / 2 * A/dx^2 (I - dt/2 * sparse(1:Nn, 1:Nn, gammaflat))]
-    #D = [I -dt/2 * I;
-    #   -dt/2 * A / dx^2 (I + dt/2 * sparse(1:Nn, 1:Nn, gammaflat))]
-    #P = [zeros(Nn); dt * mflat * pflat[isflat]]
-    
-    #C = [Matrix(1.0I, Nn, Nn) Matrix(dt/2 * I, Nn, Nn);
-    #    dt / 2 * A[isflat, isflat] / dx^2 (-dt/2 * Diagonal(dflat./mflat) + Matrix(1.0I, Nn, Nn))]
-    #D = [Matrix(1.0I, Nn, Nn) Matrix(-dt/2 * I, Nn, Nn);
-    #    -dt/2 * A[isflat, isflat] / dx^2 (dt/2 * Diagonal(dflat./mflat) + Matrix(1.0I, Nn, Nn))]
-    #P = [zeros(Nn); dt * (pflat[isflat] .+ dpflat[isflat]) ./ mflat]
+    I = sparse(1:N, 1:N, ones(N))
+    A = [I -dt / 2 * I;
+        - dt / 2 / dx^2 * sparse(1:N, 1:N, minvflat) * xi (I + dt/2 * sparse(1:N, 1:N, gammaflat))]
+    B = [I dt / 2 * I;
+         dt / 2 / dx^2 * sparse(1:N, 1:N, minvflat) * xi (I - dt/2 * sparse(1:N, 1:N, gammaflat))]
+    C = [zeros(N); dt * sparse(1:N, 1:N, minvflat) * pflat]
 
     @time begin
         for t in 1:Ndt
-            v = C * th + P
-            th = D\v
+            x = A \ (B * x + C)
             if(mod(t,interval) == 0)
-                omegas[isflat,Int64(t/interval) + 1] = th[Nn+1:end]
+                thetas[:,Int64(t/interval) + 1] = x[1:N]
+                omegas[:,Int64(t/interval) + 1] = x[N+1:end]
                 ts[Int64(t/interval) + 1] = t*dt
+                println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1])/sum(isgridflat))
             end
         end
     end
-    # Rewrite omegas and thetas in 2d format
-    omegasre = zeros(Ny,Nx,1 + Int64(ceil(Ndt/interval)))
-    for i=1:1 + Int64(ceil(Ndt/interval))
-        for j=1:Nx*Ny
-            omegasre[(j-1) % Ny + 1, (j-1) ÷ Ny + 1, i] = omegas[j, i]
+    return ts, thetas, omegas
+end
+
+
+
+function perform_dyn_sim_vec_backward_euler(
+    isgridflat::BitArray,
+    xi::SparseMatrixCSC{Float64, Int64},
+    pflat::Array{Float64, 1},
+    minvflat::Array{Float64, 1},
+    gammaflat::Array{Float64, 1},
+    th0::Array{Float64, 1};
+    interval::Int64 = 10,
+    Ndt::Int64 = 1000,
+    dt = 0.05
+)
+    println("Total time: ", dt * Ndt)
+    N = sum(isgridflat)
+    M = 1 + Int64(ceil(Ndt/interval))
+    omegas = zeros(N, M)
+    thetas = zeros(N, M)
+    ts = zeros(M)
+    
+    x = [zeros(N); th0[isgridflat]]
+    omegas[:,1] = zeros(N)
+    thetas[:,1] = copy(th0[isgridflat])  
+
+    ts = zeros(1 + Int64(ceil(Ndt/interval)))
+
+    I = sparse(1:N, 1:N, ones(N))
+    A = [I -dt * I;
+        - dt / dx^2 * sparse(1:N, 1:N, minvflat) * xi (I + dt * sparse(1:N, 1:N, gammaflat))]
+    B = [zeros(N); dt * sparse(1:N, 1:N, minvflat) * pflat]
+
+    @time begin
+        for t in 1:Ndt
+            x = A \ (x + B)
+            if(mod(t,interval) == 0)
+                thetas[:,Int64(t/interval) + 1] = x[1:N]
+                omegas[:,Int64(t/interval) + 1] = x[N+1:end]
+                ts[Int64(t/interval) + 1] = t*dt
+                println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1])/sum(isgridflat))
+            end
         end
     end
-    return ts, thetasre, omegasre
+    return ts, thetas, omegas
 end

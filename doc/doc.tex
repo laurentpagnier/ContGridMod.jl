@@ -12,36 +12,36 @@
 
 
 \begin{equation}
-m(\bm x)\frac{\partial^2}{\partial t^2}\theta(\bm x,t)+d(\bm x)\frac{\partial}{\partial t}\theta(\bm x,t)=P(\bm x,t)+\bm\nabla\cdot\big[\bm b(\bm x)\circ\bm\nabla\theta(\bm x,t)\big]\,,
+m(\bm x)\frac{\partial^2}{\partial t^2}\theta(\bm x,t)+d(\bm x)\frac{\partial}{\partial t}\theta(\bm x,t)=p(\bm x,t)+\bm\nabla\cdot\big[\bm b(\bm x)\circ\bm\nabla\theta(\bm x,t)\big]\,,
 \end{equation}
 Discretizing in time and space, updated state is computed as 
 \begin{align}
 \theta_{i,j}(t+\Delta t) &= 
 \bigg[2\chi_{ij} -\frac{\Delta t^2 m_{ij}^{-1}\chi_{ij}}{\Delta x^2}\Big(b_{i,j|i+1,j}+b_{i-1,j|i,j}+b_{i,j|i,j+1}+b_{i,j-1|i,j}\Big)\bigg]\theta_{i,j}(t)\nonumber\\
-&-\xi_{ij}\theta_{i,j}(t-\Delta t) +\frac{\Delta t^2 \chi_{i,j}m_{ij}^{-1}}{\Delta x^2}\bigg[b_{i-1,j|i,j}\theta_{i-1,j}(t)+b_{i,j|i+1,j}\theta_{i+1,j}(t)\nonumber\\
+&-\Big[1-\frac{\gamma_{i,j}\Delta t}{2}\Big]\chi_{ij}\theta_{i,j}(t-\Delta t) +\frac{\Delta t^2 \chi_{i,j}m_{ij}^{-1}}{\Delta x^2}\bigg[b_{i-1,j|i,j}\theta_{i-1,j}(t)+b_{i,j|i+1,j}\theta_{i+1,j}(t)\nonumber\\
 &+b_{i,j-1|i,j}\theta_{i,j-1}(t)
-+b_{i,j|i,j+1}\theta_{i,j+1}(t)\bigg] + \Delta t^2 \chi_{ij} m_{ij}^{-1}P_{i,j}\,,
++b_{i,j|i,j+1}\theta_{i,j+1}(t)\bigg] + \Delta t^2 \chi_{ij} m_{ij}^{-1}p_{i,j}\,,
 \end{align}
-where $\chi_{i,j}=\Big[1+\frac{\gamma_{i,j}\Delta t}{2}\Big]^{-1}$, $\xi_{i,j}=\Big[1-\frac{\gamma_{i,j}\Delta t}{2}\Big]\chi_{ij}$, with $\gamma_{i,j}=d_{i,j}/m_{i,j}$.
+where $\chi_{i,j}=\Big[1+\frac{\gamma_{i,j}\Delta t}{2}\Big]^{-1}$ and $\gamma_{i,j}=d_{i,j}/m_{i,j}$.
 
 The previous equation follows from
 \begin{equation}
-\bm\nabla\cdot\big[\bm b(\bm x)\circ\bm\nabla\theta(\bm x,t)\big]=\partial_xB_x\partial_x\theta+B_x\partial_x^2\theta +\partial_yB_y\partial_y\theta+B_y\partial_y^2\theta\,,
+\bm\nabla\cdot\big[\bm b(\bm x)\circ\bm\nabla\theta(\bm x,t)\big]=\partial_xb_x\partial_x\theta+b_x\partial_x^2\theta +\partial_yb_y\partial_y\theta+b_y\partial_y^2\theta\,,
 \end{equation}
 where
 \begin{align}
 b_x(\bm x)&\approx\frac{b^x_{i,j-1}+b^x_{i,j}}{2}\,,\\
-\partial_xv_x&\approx\frac{b^x_{i,j-1}+b^x_{i,j}}{\Delta x}\,,\\
+\partial_xb_x&\approx\frac{b^x_{i,j}-b^x_{i,j-1}}{\Delta x}\,,\\
 \partial_x\theta&\approx\frac{\theta_{i+1,j}-\theta_{i-1,j}}{2\Delta x}\,,\\
 \partial_x^2\theta&\approx\frac{\theta_{i-1,j}-2\theta_{i,j}+\theta_{i+1,j}}{\Delta x^2}\,,
 \end{align}
 So, finally
 \begin{align}
-&\partial_xb_x\partial_x\theta+b_x\partial_x^2\theta\approx\\
-&\frac{b^x_{i,j-1}\theta_{i,j-1}-(b^x_{i,j-1}+b^x_{i,j})\theta_{i,j}+b^x_{i,j}\theta_{i+1,j}}{\Delta x^2}\,,
+&\partial_xb_x\partial_x\theta+b_x\partial_x^2\theta +\partial_yb_y\partial_y\theta+b_y\partial_y^2\theta\approx\\
+&\frac{b^x_{i,j-1}\theta_{i,j-1}+b^x_{i,j}\theta_{i,j+1}+b^y_{i-1,j}\theta_{i-1,j}+b^y_{i,j}\theta_{i+1,j}-\big(b^x_{i,j-1}+b^x_{i,j}+ b^x_{i-1,j}+b^y_{i,j}\big)\theta_{i,j}}{\Delta x^2}\,,
 \end{align}
-
-Steady state is obtained  iteratively as
+\section{Steady State}
+Steady state is obtained iteratively as
 \begin{align}
 \theta_{i,j}^{(n+1)} &= \frac{\Delta x^2\,p_{i,j} + b^y_{i,j}\theta_{i-1,j}^{(n)}
 %%
@@ -51,64 +51,118 @@ Steady state is obtained  iteratively as
 {b^y_{i,j}+b^y_{i-1,j}+b^x_{i,j}+b^x_{i,j-1}}
 \end{align}
 
-%\begin{figure}
-%\includegraphics[width=0.5\textwidth]{figures/new_lattice.pdf}
-%\caption{Lattice with the ``easy to read for a human" labels}
-%\end{figure}
-
 
 \begin{figure}
-\includegraphics[width=0.7\textwidth]{figures/lattice_implementation.pdf}
+\includegraphics[width=0.5\textwidth]{figures/lattice_implementation.pdf}
 \caption{How it is implemented.}
 \end{figure}
 
-\underline{Boundary conditions:}\\
+\section{Boundary conditions}
 \begin{equation}
-\intop_{\partial \Omega}b(\bm x)\circ\nabla \theta(\bm x,t)\cdot\bm n\, {\rm d}\bm x  = 0 
+\intop_{\partial \Omega}b(\bm x)\circ\nabla \theta(\bm x,t)\cdot\bm n\, {\rm d}\bm x  = 0 \\,
 \end{equation}
 which is trivially true, if
 \begin{equation}
 n_xb_x\partial_x \theta(\bm x) + n_yb_y\partial_y \theta(\bm x) = 0\,,\; \forall t \text{ and } \bm x \in \partial \Omega \,,
 \end{equation}
-which leads to
+For the moment, lets assume in 1D and treating the case $n_x=-1$.
 \begin{equation}
-\theta_{i,j} = \frac{n_x\big[(n_x+1)b_{i,j-1|i,j}\theta_{i,j-1}+(n_x-1)b_{i,j|i,j+1}\theta_{i,j+1}\big]+
-%%
-n_y\big[(n_y+1)b_{i-1,j|i,j}\theta_{i-1,j}+(n_y-1)b_{i,j|i+1,j}\theta_{i+1,j}\big]}
-%%
-{n_x\big[(n_x+1)b_{i,j-1|i,j}+(n_x-1)b_{i,j|i,j+1}\big]+n_y\big[(n_y+1)b_{i-1,j|i,j}+(n_y-1)b_{i,j|i+1,j}\big]}\,,
+b_x(x)\partial_x \theta(x) = 0
 \end{equation}
 
-\section{Crank-Nicolson}
+\begin{align}
+b_x(x+\Delta x)\theta(x+\Delta x) &= b_x(x)\theta(x) + \Big(\partial_x b_x(x) \theta(x)+ b_x(x)\partial_x \theta(x)\Big)\Delta x + (\cdots)\Delta x^2/2 + O(\Delta x^3)\\
+b_x(x+2\Delta x)\theta(x+2\Delta x) &= b_x(x)\theta(x) + \Big(\partial_x b_x(x)\theta(x)+ b_x(x)\partial_x \theta(x)\Big)2\Delta x + 2(\cdots)\Delta x^2 + O(\Delta x^3)
+\end{align}
+Summing four times the 1st equation with minus the second, one gets
+\begin{equation}
+\theta(x) = \frac{4b_x(x+\Delta x)\theta(x+\Delta x)-b_x(x+2\Delta x)\theta(x+2\Delta x)}{3b_x(x)+2\Delta x\partial_xb_x}+O(\Delta x^3)
+\end{equation}
+Converting this expression with Eqs. 4-7, we get
+\begin{equation}
+\theta_{i,j} = \frac{4(b^x_{i,j}+b^x_{i,j+1})\theta_{i,j+1} - (b^x_{i,j+1}+b^x_{i,j+2})\theta_{i,j+2}}{3(b^x_{i,j-1}+b^x_{i,j})+4(b^x_{i,j}-b^x_{i,j-1})}
+\end{equation}
+What to do? Set $b^x_{i,j-1}$ to $0$ or to $b^x_{i,j}$!? (My opinion is that we should set it to 0.)
+%which leads to
+%\begin{equation}
+%\th eta_{i,j} = \frac{n_x\big[(n_x+1)b_{i,j-1|i,j}\theta_{i,j-1}+(n_x-1)b_{i,j|i,j+1}\theta_{i,j+1}\big]+
+%%%
+%n_y\big[(n_y+1)b_{i-1,j|i,j}\theta_{i-1,j}+(n_y-1)b_{i,j|i+1,j}\theta_{i+1,j}\big]}
+%%%
+%{n_x\big[(n_x+1)b_{i,j-1|i,j}+(n_x-1)b_{i,j|i,j+1}\big]+n_y\big[(n_y+1)b_{i-1,j|i,j}+(n_y-1)b_{i,j|i+1,j}\big]}\,,
+%\end{equation}
+
+
+\section{Vectorization}
+The different quantities are flattened, as follows
+\begin{equation}
+\theta_{i,j} \rightarrow \tilde\theta_k\,,
+\end{equation}
+with $k = N_y(i-1)+j$. With this change in the indexing, the indices of neighbouring nodes become
+\begin{align}
+i-1,j &\rightarrow k-1\,,\\
+i+1,j &\rightarrow k+1\,,\\
+i,j-1 &\rightarrow k-N_y\,,\\
+i,j+1 &\rightarrow k+N_y\,,
+\end{align}
 
 \begin{equation}
-\frac{\Delta t}{2}\,\omega_{ij}(t+\Delta t) + \theta_{ij}(t+\Delta t)=\frac{\Delta t}{2}\,\omega_{ij}(t) + \theta_{ij}(t)
+\xi_{i,j}(\bm \theta)=-\big(b^x_{i,j-1}+b^x_{i,j}+b^y_{i-1,j}+b^y_{i,j}\big)\theta_{i,j}
+%%
++b^x_{i,j-1}\theta_{i,j-1}
+%%
++b^x_{i,j}\theta_{i,j+1}
+%%
++b^y_{i-1,j}\theta_{i-1,j}
+%%
++b^y_{i,j}\theta_{i+1,j}\,,
+\end{equation}
+\begin{equation}
+\bm \xi(\bm \theta) =\bm \Xi\, \bm{\tilde\theta}
+\end{equation}
+\begin{equation}
+\Xi_{kl} = \big(\tilde b^x_{k}+\tilde b^x_{k-N_y}+\tilde b^y_{k}+\tilde b^y_{k-1}\big)\delta_{k,l}
+%%
++\tilde b^{x}_{k-N_y}\delta_{k-N_y,l}
+%%
++\tilde b^{x}_{k}\delta_{k+N_y,l}
+%%
++\tilde b^{y}_{k-1}\delta_{k-1,l}
+%%
++\tilde b^{y}_{k}\delta_{k+1,l}\,,
+\end{equation}
+with $\delta_{\cdot,\cdot}$ is the Kronecker product.
+\section{Crank–Nicolson}
+
+\begin{equation}
+ \theta_{i,j}(t+\Delta t) -\frac{\Delta t}{2}\,\omega_{i,j}(t+\Delta t) = \theta_{i,j}(t) + \frac{\Delta t}{2}\,\omega_{i,j}(t)\,,
 \end{equation}
 
 \begin{equation}
-\Big(1+\frac{\gamma_{ij}\Delta t}{2}\Big)\omega_{ij}(t+\Delta t) - \frac{\Delta t}{2}\xi\big(\theta_{ij}(t+\Delta t)\big)
+\Big(1+\frac{\gamma_{i,j}\Delta t}{2}\Big)\omega_{i,j}(t+\Delta t) - \frac{\Delta t}{2}\xi\big(\theta_{i,j}(t+\Delta t)\big)
 %%
 =
 %%
-\Big(1-\frac{\gamma_{ij}\Delta t}{2}\Big)\omega_{ij}(t)+\frac{\Delta t}{2}\xi\big(\theta_{ij}(t)\big) + (2m_{ij})^{-1}\Big[p_{ij}(t+\Delta t) + p_{ij}(t)\Big]
+\Big(1-\frac{\gamma_{i,j}\Delta t}{2}\Big)\omega_{i,j}(t)+\frac{\Delta t}{2}\xi\big(\theta_{i,j}(t)\big) + (2m_{i,j})^{-1}\Big[p_{i,j}(t+\Delta t) + p_{i,j}(t)\Big]\,,
 \end{equation}
 
 \begin{equation}
-\left[\begin{array}{cc}
+\underbrace{\left[\begin{array}{cc}
 \mathbb{1} & -\frac{\Delta t}{2} \mathbb{1}\\
--\frac{\Delta t}{2}\bm A & \mathbb{1} + \frac{\Delta t}{2}\bm\Gamma
-\end{array}\right]\bm x(t+ \Delta t)
+-\frac{\Delta t}{2\Delta x^2}\,\bm M^{-1}\,\bm \Xi & \mathbb{1} + \frac{\Delta t}{2}\,\bm\Gamma
+\end{array}\right]}_{=\bm A}\bm x(t+ \Delta t)
 %%
 =
 %%
-\left[\begin{array}{cc}
+\underbrace{\left[\begin{array}{cc}
 \mathbb{1} & \frac{\Delta t}{2} \mathbb{1}\\
-\frac{\Delta t}{2}\bm A & \mathbb{1} - \frac{\Delta t}{2}\bm\Gamma
-\end{array}\right]\bm x(t) +
-\left[\begin{array}{c}
+\frac{\Delta t}{2\Delta x^2}\,\bm M^{-1}\,\bm \Xi & \mathbb{1} - \frac{\Delta t}{2}\,\bm\Gamma
+\end{array}\right]}_{=\bm B}\bm x(t) +
+%%
+\underbrace{ \left[\begin{array}{c}
 \mathbb{0}\\
-\bm \Pi\end{array}\right]
+\bm \pi\end{array}\right]}_{=\bm C}\,,
 \end{equation}
-
+with $\bm x^\top = [\bm{\tilde \theta}^\top\; \bm{\tilde \omega}^\top]$.
 
 \end{document}

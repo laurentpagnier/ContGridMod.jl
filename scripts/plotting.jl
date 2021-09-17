@@ -49,9 +49,9 @@ function time_plot(
         idstart = 1 
     end
     if(tend != 0.0)
-        idend = findall(ts .< tend)[end]
+        idend = findall(time .< tend)[end]
     else
-        idend = length(ts) 
+        idend = length(time) 
     end
     idin = findall(isinside)
     cont_coord = zeros(length(idin), 2)
