@@ -1,3 +1,5 @@
+using Plots
+
 function ctr_plot(isin::BitMatrix,
     values::Array{Float64,2};
     xlim::Tuple = (0.0, 0.0),

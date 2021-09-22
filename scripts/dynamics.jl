@@ -1,102 +1,37 @@
+using SparseArrays
+using LinearAlgebra
+
+
 function perform_dyn_sim(
-    isinside::BitMatrix,
-    n::Array{Float64, 2},
-    bx::Array{Float64, 2},
-    by::Array{Float64, 2},
-    p::Array{Float64, 2},
-    m::Array{Float64, 2},
-    d::Array{Float64, 2},
-    th0::Array{Float64, 2};
-    interval::Int64 = 100,
-    Ndt::Int64 = 15000,
-    dt = 0.0001
+    isgridflat::BitArray,
+    xi::SparseMatrixCSC{Float64, Int64},
+    pflat::Array{Float64, 1},
+    minvflat::Array{Float64, 1},
+    gammaflat::Array{Float64, 1},
+    th0::Array{Float64, 1};
+    interval::Int64,
+    Ndt::Int64,
+    dt::Float64,
+    method::String="crank-nicolson"
 )
 
-    temp = findall(isinside)
-    idin = Int64.(zeros(size(temp, 1), 2))
-    for i in 1:size(temp,1)
-        idin[i,:] = [temp[i][1], temp[i][2]]
+    if(method == "crank-nicolson")
+        return ts, thetas, omegas = perform_dyn_sim_crank_nicolson(isgridflat, xi,
+            pflat, minvflat, gammaflat, th0; interval, Ndt, dt)  
+    elseif(method == "backward-euler")
+        return ts, thetas, omegas = perform_dyn_sim_backward_euler(isgridflat, xi,
+            pflat, minvflat, gammaflat, th0; interval, Ndt, dt)    
+    elseif(method == "forward")
+        return ts, thetas, omegas = perform_dyn_sim_forward(isgridflat, xi,
+            pflat, minvflat, gammaflat, th0; interval, Ndt, dt)
+    else
+        println("Method not found, '", method, "' is not implemented.")
     end
-    
-    gamma = d ./ m
 
-    omegas = zeros(Ny, Nx, 1 + Int64(ceil(Ndt/interval)))
-    thetas = zeros(Ny, Nx, 1 + Int64(ceil(Ndt/interval)))
-    th = copy(th0)
-    th_new = zeros(Ny, Nx)
-    th_old = copy(th0)
-    omegas[:,:,1] = (th - th_old) / dt
-    thetas[:,:,1] = th
-
-    ts = zeros(1 + Int64(ceil(Ndt/interval)))
-    chi = 1.0 .+ gamma*dt ./ 2.0
-
-    b = zeros(Ny, Nx)
-    Threads.@threads for k in 1:size(idin, 1)
-        i = idin[k, 1]
-        j = idin[k, 2]
-        b[i, j] = (by[i-1, j] + by[i, j] + bx[i, j-1] + bx[i, j])
-    end
-            
-    Threads.@threads for k in 1:size(n, 1)
-        i = Int64(n[k,1])
-        j = Int64(n[k,2])
-        nx = n[k,4]
-        ny = n[k,3]
-        b[i, j] = (1.0 + ny) * by[i-1, j] +
-            (1.0 - ny) * by[i, j] +
-            (1.0 + nx) * bx[i, j-1] +
-            (1.0 - nx) * bx[i, j]
-    end 
-
-    @time begin
-        for t in 1:Ndt
-            
-            Threads.@threads for k in 1:size(idin, 1)
-                i = idin[k, 1]
-                j = idin[k, 2]
-                th_new[i, j] = (2.0 - b[i, j] / m[i, j] * dt^2 / dx^2) / chi[i, j] * th[i, j] + 
-                    ( gamma[i, j] * dt / 2.0 - 1.0 ) / chi[i, j] * th_old[i, j] + 
-                    dt^2 / dx^2 / chi[i, j] / m[i, j] * (
-                    by[i, j] * th[i+1, j] +
-                    by[i-1, j] * th[i-1, j] +
-                    bx[i, j] * th[i, j+1] +
-                    bx[i, j-1] * th[i, j-1]
-                    ) + dt^2 / chi[i, j] / m[i, j] * p[i, j]
-            end
-            
-            Threads.@threads for k in 1:size(n, 1)
-                i = Int64(n[k, 1])
-                j = Int64(n[k, 2])
-                nx = n[k, 4]
-                ny = n[k, 3]
-                th_new[i, j] = (2.0 - b[i, j] / m[i, j] * dt^2 / dx^2) / chi[i, j] * th[i, j] + 
-                    ( gamma[i, j] * dt / 2.0 - 1.0 ) / chi[i, j] * th_old[i, j] + 
-                    dt^2 / dx^2 / chi[i, j] / m[i, j] * (
-                    (1 - ny) * by[i, j] * th[i+1, j] +
-                    (1 + ny) * by[i-1, j] * th[i-1, j] +
-                    (1 - nx) * bx[i, j] * th[i, j+1] +
-                    (1 + nx) * bx[i, j-1] * th[i, j-1]
-                    ) + dt^2 / chi[i, j] / m[i, j] * p[i, j]
-            end  
-
-            if(mod(t, interval) == 0)
-                omegas[:,:,Int64(t/interval) + 1] = (th_new - th) / dt
-                thetas[:,:,Int64(t/interval) + 1] = th_new
-                ts[Int64(t/interval) + 1] = t * dt
-                println("NIter: ", t, " Omega: ", sum(omegas[isinside,Int64(t/interval) + 1]) / sum(isinside))
-            end
-            
-            th_old = copy(th)
-            th = copy(th_new)
-        end
-    end
-    return ts, thetas, omegas
 end
 
 
-
-function perform_dyn_sim_vec(
+function perform_dyn_sim_forward(
     isgridflat::BitArray,
     xi::SparseMatrixCSC{Float64, Int64},
     pflat::Array{Float64, 1},
@@ -105,7 +40,7 @@ function perform_dyn_sim_vec(
     th0::Array{Float64, 1};
     interval::Int64 = 100,
     Ndt::Int64 = 15000,
-    dt = 0.0001
+    dt::Float64 = 0.0001
 )
     println("Total time: ", dt * Ndt)
     N = sum(isgridflat)
@@ -146,8 +81,7 @@ function perform_dyn_sim_vec(
 end
 
 
-
-function perform_dyn_sim_vec_crank_nicolson(
+function perform_dyn_sim_crank_nicolson(
     isgridflat::BitArray,
     xi::SparseMatrixCSC{Float64, Int64},
     pflat::Array{Float64, 1},
@@ -156,7 +90,7 @@ function perform_dyn_sim_vec_crank_nicolson(
     th0::Array{Float64, 1};
     interval::Int64 = 10,
     Ndt::Int64 = 1000,
-    dt = 0.05
+    dt::Float64 = 0.05
 )
     println("Total time: ", dt * Ndt)
     N = sum(isgridflat)
@@ -193,8 +127,7 @@ function perform_dyn_sim_vec_crank_nicolson(
 end
 
 
-
-function perform_dyn_sim_vec_backward_euler(
+function perform_dyn_sim_backward_euler(
     isgridflat::BitArray,
     xi::SparseMatrixCSC{Float64, Int64},
     pflat::Array{Float64, 1},
@@ -203,7 +136,7 @@ function perform_dyn_sim_vec_backward_euler(
     th0::Array{Float64, 1};
     interval::Int64 = 10,
     Ndt::Int64 = 1000,
-    dt = 0.05
+    dt::Float64 = 0.05
 )
     println("Total time: ", dt * Ndt)
     N = sum(isgridflat)
@@ -235,4 +168,85 @@ function perform_dyn_sim_vec_backward_euler(
         end
     end
     return ts, thetas, omegas
+end
+
+
+function vectorize(
+    isinside::BitMatrix,
+    isborder::BitMatrix,
+    n::Array{Float64, 2},
+    bx::Array{Float64, 2},
+    by::Array{Float64, 2},
+    p::Array{Float64, 2},
+    m::Array{Float64, 2},
+    d::Array{Float64, 2},
+)
+    # flatten the m, d, p, bx and by matrices
+    isinsideflat = vec(isinside)
+    isgridflat = vec(isinside .| isborder)
+    bxflat = vec(bx)
+    byflat = vec(by)
+    pflat = vec(p)
+    mflat = vec(m)
+    dflat = vec(d)
+    Ny = size(bx,1)
+    Nx = size(bx,2)
+
+    id1 = Array{Int64,1}()
+    id2 = Array{Int64,1}()
+    v = Array{Float64,1}()
+    for k in 1:Nx*Ny
+        if(isinsideflat[k])
+            append!(id1, k)
+            append!(id2, k)
+            append!(v, - (bxflat[k] +
+                bxflat[k-Ny] +
+                byflat[k] +
+                byflat[k-1])
+                )
+            append!(id1, k)
+            append!(id2, k-Ny)
+            append!(v, bxflat[k-Ny])
+            append!(id1, k)
+            append!(id2, k+Ny)
+            append!(v, bxflat[k])
+            append!(id1, k)
+            append!(id2, k-1)
+            append!(v, byflat[k-1])
+            append!(id1, k)
+            append!(id2, k+1)
+            append!(v, byflat[k])            
+        end
+    end
+    
+    for id in 1:size(n, 1)
+        k = (Int64(n[id, 2]) - 1) * Ny + Int64(n[id, 1])
+        ny = n[id, 3]
+        nx = n[id, 4] 
+        append!(id1, k)
+        append!(id2, k)
+        append!(v, - ((1.0 - nx) * bxflat[k] +
+            (1.0 + nx) * bxflat[k-Ny] +
+            (1.0 - ny) * byflat[k] +
+            (1.0 + ny) * byflat[k-1]))
+        append!(id1, k)
+        append!(id2, k-Ny)
+        append!(v, (1.0 + nx) * bxflat[k-Ny])
+        append!(id1, k)
+        append!(id2, k+Ny)
+        append!(v, (1.0 - nx) * bxflat[k])
+        append!(id1, k)
+        append!(id2, k-1)
+        append!(v, (1.0 + ny) * byflat[k-1])   
+        append!(id1, k)
+        append!(id2, k+1)
+        append!(v, (1.0 - ny) * byflat[k])
+    end
+    
+    xi = sparse(id1, id2, v, Ny * Nx, Ny * Nx)
+    minvflat = mflat.^(-1)
+    minvflat = minvflat[isgridflat]
+    gammaflat = dflat[isgridflat] .* minvflat
+    xi = SparseMatrixCSC{Float64, Int64}(xi[isgridflat,isgridflat])
+    return isinsideflat, pflat, minvflat, gammaflat, xi
 end

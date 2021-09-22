@@ -195,4 +195,26 @@ with $\delta_{\cdot,\cdot}$ is the Kronecker product.
 \end{equation}
 with $\bm x^\top = [\bm{\tilde \theta}^\top\; \bm{\tilde \omega}^\top]$.
 
+
+\section{Higher orders}
+
+\begin{equation}
+\partial_x^2\theta = \frac{-\theta_{i,j-2}+16\,\theta_{i,j-1}-30\,\theta_{i,j}+16\,\theta_{i,j+1}-\theta_{i,j+2}}{24\Delta x^2}+O(\Delta x^5)\,,
+\end{equation}
+\begin{equation}
+\partial_x\theta = \frac{\theta_{i,j-2}-8\,\theta_{i,j-1}+8\,\theta_{i,j+1}-\theta_{i,j+2}}{12\Delta x}+O(\Delta x^5)\,,
+\end{equation}
+\begin{equation}
+\partial_x b_x = \frac{b^x_{i,j-2}-27\,b^x_{i,j-1}+27\,b^x_{i,j}-b^x_{i,j+1}}{48\Delta x}+O(\Delta x^5)\,,
+\end{equation}
+
+\begin{align}
+\partial_xb_x\partial_x\theta_x + b_x\partial_x^2\theta &=
+%%
+\Big[(b^x_{i,j-2}-29\,b^x_{i,j-1}+25\,b^x_{i,j}-b^x_{i,j+1})\theta_{i,j-2}\\
+%%
+&+(b^x_{i,j-2}-152\,b^x_{i,j-1}+280\,b^x_{i,j}-b^x_{i,j+1})\theta_{i,j-1}\\
+%%
+&-(48b^x_{i,j-1}+48b^x_{i,j})\theta_{i,j}\Big]/ (576\Delta x^2) (FALSE TODO)
+\end{align}
 \end{document}

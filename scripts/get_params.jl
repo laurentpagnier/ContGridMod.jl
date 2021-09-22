@@ -5,6 +5,7 @@ function get_params(
     dx::Float64,
     yrange::Array{Float64, 1},
     xrange::Array{Float64, 1},
+    scaling_factor::Float64,
     dataname::String,
     savename::String;
     sigma::Float64 = 100.0,
@@ -13,7 +14,7 @@ function get_params(
     patch::Float64 = 1.0 # a temporary patch so that the discrete and continuous
                   #stables solutions more or less coincide
 )
-    gen, dem, bline, idb, idgen, coord, mg, dg, dl, th = load_discrete_model(dataname::String)
+    gen, dem, bline, idb, idgen, coord, mg, dg, dl, th = load_discrete_model(dataname::String, scaling_factor)
     
     isgrid = BitArray(isinside + isborder)
     
@@ -388,7 +389,6 @@ function heat_diff(
             j = Int64(n[k,2])
             nx = n[k,4]
             ny = n[k,3]
-            bij = (1 + ny) + (1 - ny) + (1 + nx) + (1 - nx)
             v_new[i, j] = (1.0 - 4.0 * tau) * v[i, j] + tau * (
                 (1 - ny) * v[i+1, j] +
                 (1 - ny) * v[i-1, j] +
@@ -403,7 +403,8 @@ end
 
 
 function load_discrete_model(
-    dataname::String
+    dataname::String,
+    scaling_factor::Float64
 )
     data = h5read(dataname, "/")
     mg = vec(data["gen_inertia"])
@@ -416,7 +417,7 @@ function load_discrete_model(
     dem = vec(data["bus"][:, 3]) / 100.0
     th = vec(data["bus"][:, 9]) / 180.0 * pi
     gen = vec(data["gen"][:, 2]) / 100.0
-    return gen, dem, bline, idb, idgen, coord, mg, dg, dl, th
+    return gen, dem, bline, idb, idgen, coord / scaling_factor, mg, dg, dl, th
 end
 
 

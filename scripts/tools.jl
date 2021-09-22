@@ -1,5 +1,6 @@
-include("plotting.jl")
-include("ps_analysis.jl")
+#include("plotting.jl")
+#include("ps_analysis.jl")
+using JSON
 
 
 function inPolygon(p::Array{Float64,2}, poly::Array{Float64,2})
@@ -26,6 +27,7 @@ function inPolygon(p::Array{Float64,2}, poly::Array{Float64,2})
     return b
 end
 
+
 function alberts_projection(
     coord::Array{Float64,2};
     lon0::Float64 = 13.37616 / 180 * pi,
@@ -46,6 +48,7 @@ function alberts_projection(
     return [x y]
 end
 
+
 function import_border(
     filename::String
 )
@@ -63,7 +66,11 @@ function import_border(
     end
 
     b = alberts_projection(b)
-    return b
+    scale_factor = max(
+        maximum(b[:,1]) - minimum(b[:,1]),
+        maximum(b[:,2]) - minimum(b[:,2])
+        )
+    return b / scale_factor, scale_factor
 end
 
 
@@ -93,91 +100,6 @@ function import_json_numerics(
     return data, keys
 end
 
-
-function get_cont_values(
-    isinside::BitMatrix,
-    yrange::Array{Float64, 1},
-    xrange::Array{Float64, 1},
-    disc_coord::Array{Float64, 2},
-    disc_values::Array{Float64, 1};
-    Niter = 1000
-)
-    
-    idin = findall(isinside)
-    cont_coord = zeros(length(idin), 2)
-    for i = 1:length(idin)
-        cont_coord[i,:] = [xrange[idin[i][2]], yrange[idin[i][1]]]
-    end
-    
-    cont_values_vec = zeros(length(idin))
-    for i = 1:size(idin, 1)
-        dx = disc_coord[:,1] .- cont_coord[i,1] 
-        dy = disc_coord[:,2] .- cont_coord[i,2] 
-        id = argmin(dx.^2 + dy.^2)
-        cont_values_vec[i] = disc_values[id]
-    end
-    
-    cont_values = zeros(Ny, Nx)
-    cont_values[idin] = cont_values_vec
-    
-    new_cont_values = zeros(Ny, Nx)
-    tau = 0.001
-    interval = 100
-
-    @time begin
-        for k in 1:Niter
-            Threads.@threads for i in 2:Ny-1
-                Threads.@threads for j in 2:Nx-1
-                    if(isinside[i,j])
-                        new_cont_values[i,j] = (1.0 - 4.0 * tau) * cont_values[i,j] + tau * (cont_values[i+1,j] +
-                            cont_values[i-1,j] + cont_values[i,j+1] + cont_values[i,j-1])
-                    end
-                end
-            end
-            
-            Threads.@threads for k in 1:size(n,1)
-                i = Int64(n[k,1])
-                j = Int64(n[k,2])
-                nx = n[k,4]
-                ny = n[k,3]
-                if(nx == 1)
-                    new_cont_values[i,j] = new_cont_values[i,j-2]
-                elseif(nx == -1)
-                    new_cont_values[i,j] = new_cont_values[i,j+2]
-                end
-                if(ny == 1)
-                    new_cont_values[i,j] = new_cont_values[i-2,j]
-                elseif(ny == -1)
-                    new_cont_values[i,j] = new_cont_values[i+2,j]
-                end
-            end
-            
-            cont_values = copy(new_cont_values)
-            
-            if(mod(k,interval) == 0)
-                println(k)
-            end
-        end
-    end
-    return cont_values
-end
-
-
-function find_time_step(isin::BitMatrix, m::Array{Float64,2}, d::Array{Float64,2}, p::Array{Float64,2},
-    bx::Array{Float64,2}, by::Array{Float64,2}, dx::Float64, alpha=0.1)
-    # !!!!!!! NOT FUNCTIONAL STILL SOME WORK TO DO
-    Nx = size(m,2)
-    Ny = size(m,1)
-    bij = zeros(size(m))
-    for i = 2:Ny-2
-        for j = 2:Nx-2
-            bij[i,j] = bx[i,j] + bx[i,j+1] + by[i-1,j] + by[i,j]
-        end
-    end
-    gamma = d ./ m
-    println(alpha*dx^2*minimum(m[isin] ./ bij[isin]))
-    println(alpha*minimum(d[isin] ./ abs.(p[isin])))
-end
 
 function back_to_2d(isgrid::BitMatrix, valueflat::Array{Float64,2})
     value = zeros(size(isgrid, 1), size(isgrid, 2), size(valueflat, 2))
