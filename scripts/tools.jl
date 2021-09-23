@@ -3,6 +3,37 @@
 using JSON
 
 
+
+function inPolygon_new(
+    point::Array{Tuple{Float64, Float64}, 1},
+    poly::Array{Tuple{Float64, Float64}, 1},
+)
+    N = length(poly)
+    Np = length(point)
+    b = falses(Np)
+    Threads.@threads for k in 1:Np
+        j = N
+        for i = 1:N
+            if (
+                ((poly[i][2] < point[k][2]) & (poly[j][2] >= point[k][2])) |
+                ((poly[j][2] < point[k][2]) & (poly[i][2] >= point[k][2]))
+            )
+                if (
+                    poly[i][1] +
+                    (point[k][2] - poly[i][2]) / (poly[j][2] - poly[i][2]) *
+                    (poly[j][1] - poly[i][1]) < point[k][1]
+                )
+                    b[k] = !b[k]
+                end
+            end
+            j = i
+        end
+    end
+    return b
+end
+
+
+
 function inPolygon(p::Array{Float64,2}, poly::Array{Float64,2})
     N = size(poly, 1)
     b = Bool.(zeros(size(p, 1), 1))

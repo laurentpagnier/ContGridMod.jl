@@ -219,12 +219,12 @@ function norm_dist(
 end
 
 
-function get_params_diff(
+
+function get_params_diff_fast(
     isinside::BitMatrix,
     n::Array{Float64, 2},
     dx::Float64,
-    yrange::Array{Float64, 1},
-    xrange::Array{Float64, 1},
+    grid_coord::Array{Tuple{Float64, Float64}, 1},
     dataname::String,
     savename::String;
     def_val::Float64 = 1E-2,
@@ -240,6 +240,154 @@ function get_params_diff(
 
     # load the discrete model
     gen, dem, bline, idb, idgen, coord, mg, dg, dl, th = load_discrete_model(dataname)
+    
+    isgrid = isinside .| isborder
+
+    N = length(grid_coord)
+    
+    # get the coordinates of every point in the grid
+    temp = findall(isgrid)
+    Nbus = length(temp)
+    lat_coord = zeros(Nbus, 2)
+    idgrid = Int64.(zeros(size(temp, 1), 2))
+    for i = 1:Nbus
+        idgrid[i,:] = [temp[i][1], temp[i][2]]
+        lat_coord[i, :] = [yrange[temp[i][1]], xrange[temp[i][2]]]
+    end
+    
+    temp = findall(isinside)
+    idin = Int64.(zeros(size(temp, 1), 2))
+    for i = 1:size(temp,1)
+        idin[i,:] = [temp[i][1], temp[i][2]]
+    end
+
+    m = zeros(N)
+    d = zeros(N)
+    pl = zeros(N)
+    pg = zeros(N)
+    bx = zeros(N)
+    by = zeros(N)
+    
+    for g in 1:length(idgen)
+        k = argmin((grid_coord[:, 1] .- coord[idgen[g],1]).^2 +
+            (lat_coord[:, 1] .- coord[idgen[g],2]).^2)
+        m[k] += mg[g]
+        d[k] += dg[g]
+        pg[k] += gen[g]
+    end
+    
+    for l in 1:length(dl)
+        k = argmin((lat_coord[:, 2] .- coord[l,1]).^2 +
+            (lat_coord[:, 1] .- coord[l,2]).^2)
+        d[k] += dl[l]
+        pl[idgrid[k,1], idgrid[k,2]] += dem[l]
+    end
+
+    for l in 1:size(idb,1)
+        x2 = coord[idb[l,2], 1]
+        x1 = coord[idb[l,1], 1]
+        y2 = coord[idb[l,2], 2]
+        y1 = coord[idb[l,1], 2] 
+        dx_l = x2 - x1
+        dy_l = y2 - y1
+        ds2 = (dy_l^2 + dx_l^2)
+        phi = atan(dy_l, dx_l)
+        if(dx_l != 0 && dy_l != 0) # if not a transformer
+            x = lat_coord[:, 2] # using node locations instead of centers of lines, 
+            y = lat_coord[:, 1] # it's "less precise" but way simpler to implement 
+        
+            beta = (dx_l .* (y1 .- y) + dy_l .* (x .- x1)) ./ ds2
+            alpha = (dx_l .* (x .- x1) + dy_l .* (y .- y1)) ./ ds2
+            in_seg = (0 .< alpha) .& (alpha .< 1)
+            dist = abs.(beta) .* in_seg .* sqrt(ds2) + # if close to the segment
+                .!in_seg .* min.(sqrt.((x .- x1).^2 + (y .- y1).^2), # if close to the ends
+                sqrt.((x .- x2).^2 + (y .- y2).^2)) 
+            bx[idgrid[dist .< dmax,1], idgrid[dist .< dmax,2]] .+= bline[l] * abs(cos(phi)) * dx^2 * patch
+            by[idgrid[dist .< dmax,1], idgrid[dist .< dmax,2]] .+= bline[l] * abs(sin(phi)) * dx^2 * patch
+        end
+    end
+
+    
+    @time begin
+        m = heat_diff(idin, n, m, Niter = Niter, tau = tau)
+        println("Done with inertia.")
+        d = heat_diff(idin, n, d, Niter = Niter, tau = tau)
+        println("Done with damping.")
+        pg = heat_diff(idin, n, pg, Niter = Niter, tau = tau)
+        println("Done with with generation.")
+        pl = heat_diff(idin, n, pl, Niter = Niter, tau = tau)
+        println("Done with load.")
+        bx = heat_diff(idin, n, bx, Niter = Niter, tau = tau)
+        by = heat_diff(idin, n, by, Niter = Niter, tau = tau)
+    end
+
+    # due to how the boundary is treated in the code, interia, damping or
+    # power injection on boundary won't be taken into account
+    # this is just in case, but should'nt be need as parameters are not
+    # allowed to diffuse ouside of the grid
+    m[.!isgrid] .= 0
+    d[.!isgrid] .= 0
+    pl[.!isgrid] .= 0
+    pg[.!isgrid] .= 0
+    
+    # asign minimal values to the quantities
+    m[isgrid] .= max.(m[isgrid], min_factor * sum(m) / sum(isgrid))
+    d[isgrid] .= max.(d[isgrid], min_factor * sum(d) / sum(isgrid))
+    bx[isgrid] .= max.(bx[isgrid], min_factor * sum(bx) / sum(isgrid))
+    by[isgrid] .= max.(by[isgrid], min_factor * sum(by) / sum(isgrid))
+    
+    # ensure that the integrals of the different quantities over
+    # the medium is equivalent to their sum over the discrete model
+
+    m = sum(mg) .* m ./ trapz((yrange, xrange), m)
+    d = (sum(dg) + sum(dl)) .* d ./ trapz((yrange, xrange), d)
+    pl = sum(dem) .* pl ./ trapz((yrange, xrange), pl)
+    pg = sum(gen) .* pg ./ trapz((yrange, xrange), pg)
+    
+    # save the quantities
+    fid = h5open(savename, "w")
+    write(fid, "bx", bx)
+    write(fid, "by", by)
+    write(fid, "m", m)
+    write(fid, "d", d)
+    write(fid, "pl", pl)
+    write(fid, "pg", pg)
+    write(fid, "xrange", xrange)
+    write(fid, "yrange", yrange)
+    close(fid)
+
+    # ensure that the integral of the power injection is 0, i.e
+    # that generation matches the demand.
+    p = pg - pl 
+    p[isgrid] = p[isgrid] .- sum(p[isgrid]) / sum(isgrid)
+
+    return bx, by, p, m, d
+end
+
+
+
+function get_params_diff(
+    isinside::BitMatrix,
+    n::Array{Float64, 2},
+    dx::Float64,
+    yrange::Array{Float64, 1},
+    xrange::Array{Float64, 1},
+    scaling_factor::Float64,
+    dataname::String,
+    savename::String;
+    def_val::Float64 = 1E-2,
+    dmax::Float64 = 100.0,
+    Niter::Int64 = 5000,
+    tau::Float64 = 0.001,
+    patch::Float64 = 0.001,
+    min_factor::Float64 = 0.1,
+    bmin::Float64 = 1.0
+)
+    # this function uses the heat equation to "diffuse" the discrete 
+    # parameters over the lattice (tau=kappa*dt/dx^2)
+
+    # load the discrete model
+    gen, dem, bline, idb, idgen, coord, mg, dg, dl, th = load_discrete_model(dataname, scaling_factor)
     
     isgrid = isinside .| isborder
 
@@ -364,6 +512,108 @@ function get_params_diff(
 
     return bx, by, p, m, d
 end
+
+
+
+function heat_diff_fast(
+    isinsideflat::Array{Int64, 2},
+    n::Array{Float64,2},
+    v0::Array{Float64,2};
+    Niter::Int64 = 5000,
+    tau::Float64 = 0.001,
+)
+    v_new = copy(v0)
+    v = copy(v0)
+    
+    id1 = Array{Int64,1}()
+    id2 = Array{Int64,1}()
+    v = Array{Float64,1}()
+    for k in 1:Nx*Ny
+        if(isinsideflat[k])
+            append!(id1, k)
+            append!(id2, k)
+            append!(v, - (bxflat[k] +
+                bxflat[k-Ny] +
+                byflat[k] +
+                byflat[k-1])
+                )
+            append!(id1, k)
+            append!(id2, k-Ny)
+            append!(v, bxflat[k-Ny])
+            append!(id1, k)
+            append!(id2, k+Ny)
+            append!(v, bxflat[k])
+            append!(id1, k)
+            append!(id2, k-1)
+            append!(v, byflat[k-1])
+            append!(id1, k)
+            append!(id2, k+1)
+            append!(v, byflat[k])            
+        end
+    end
+    
+    for id in 1:size(n, 1)
+        k = (Int64(n[id, 2]) - 1) * Ny + Int64(n[id, 1])
+        ny = n[id, 3]
+        nx = n[id, 4] 
+        append!(id1, k)
+        append!(id2, k)
+        append!(v, - ((1.0 - nx) * bxflat[k] +
+            (1.0 + nx) * bxflat[k-Ny] +
+            (1.0 - ny) * byflat[k] +
+            (1.0 + ny) * byflat[k-1]))
+        append!(id1, k)
+        append!(id2, k-Ny)
+        append!(v, (1.0 + nx) * bxflat[k-Ny])
+        append!(id1, k)
+        append!(id2, k+Ny)
+        append!(v, (1.0 - nx) * bxflat[k])
+        append!(id1, k)
+        append!(id2, k-1)
+        append!(v, (1.0 + ny) * byflat[k-1])   
+        append!(id1, k)
+        append!(id2, k+1)
+        append!(v, (1.0 - ny) * byflat[k])
+    end
+    
+    for t in 1:Niter
+        #x = A \ (B * x + C) way slower when dx -> 0
+        gmres!(x, A , B * x + C)
+        if(mod(t, interval) == 0)
+            thetas[:,Int64(t/interval) + 1] = x[1:N]
+            omegas[:,Int64(t/interval) + 1] = x[N+1:end]
+            ts[Int64(t/interval) + 1] = t * dt
+            println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1])/sum(isgridflat))
+        end
+    end
+    
+    for t in 1:Niter
+        Threads.@threads for k in 1:size(idin, 1)
+            i = idin[k, 1]
+            j = idin[k, 2]
+            v_new[i, j] = (1.0 - 4.0 * tau) * v[i, j] + tau * (v[i+1, j] +
+                v[i-1, j] + v[i, j+1] + v[i, j-1])
+
+        end
+            
+        Threads.@threads for k in 1:size(n,1)
+            i = Int64(n[k,1])
+            j = Int64(n[k,2])
+            nx = n[k,4]
+            ny = n[k,3]
+            v_new[i, j] = (1.0 - 4.0 * tau) * v[i, j] + tau * (
+                (1 - ny) * v[i+1, j] +
+                (1 - ny) * v[i-1, j] +
+                (1 - nx) * v[i, j+1] +
+                (1 + nx) *  v[i, j-1]
+            )
+        end
+        v = copy(v_new)
+    end
+    return v 
+end
+
+
 
 
 function heat_diff(

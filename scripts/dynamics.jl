@@ -1,6 +1,6 @@
 using SparseArrays
 using LinearAlgebra
-
+using IterativeSolvers
 
 function perform_dyn_sim(
     isgridflat::BitArray,
@@ -114,7 +114,8 @@ function perform_dyn_sim_crank_nicolson(
 
     @time begin
         for t in 1:Ndt
-            x = A \ (B * x + C)
+            #x = A \ (B * x + C) way slower when dx -> 0
+            gmres!(x, A , B * x + C)
             if(mod(t,interval) == 0)
                 thetas[:,Int64(t/interval) + 1] = x[1:N]
                 omegas[:,Int64(t/interval) + 1] = x[N+1:end]
@@ -158,7 +159,8 @@ function perform_dyn_sim_backward_euler(
 
     @time begin
         for t in 1:Ndt
-            x = A \ (x + B)
+            #x = A \ (x + B)
+            gmres!(x, A , x + B)
             if(mod(t,interval) == 0)
                 thetas[:,Int64(t/interval) + 1] = x[1:N]
                 omegas[:,Int64(t/interval) + 1] = x[N+1:end]
