@@ -132,10 +132,12 @@ function import_json_numerics(
 end
 
 
-function back_to_2d(isgrid::BitMatrix, valueflat::Array{Float64,2})
-    value = zeros(size(isgrid, 1), size(isgrid, 2), size(valueflat, 2))
+function back_to_2d(isgrid::BitVector, Ny::Int64, Nx::Int64, valueflat::Array{Float64,2})
+    value = zeros(Ny, Nx, size(valueflat, 2))
     for t in 1:size(valueflat, 2)
-        value[isgrid, t] .= valueflat[:, t]
+    	temp = zeros(size(isgrid))
+    	temp[isgrid] .= valueflat[:, t]
+        value[:,:, t] = reshape(temp, Ny, Nx)
     end
     return value
 end

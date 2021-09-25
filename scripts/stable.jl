@@ -61,7 +61,7 @@ function compute_stable_sol(
     end
     
     xi = sparse(id1, id2, v, Ny * Nx, Ny * Nx)
-    p2 = dx^2 * p[isgrid]
+    p2 = dx^2 * p
     th = zeros(sum(isgrid))
     xi = xi[isgrid, isgrid]
     b = b[isgrid]
