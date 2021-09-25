@@ -225,25 +225,30 @@ function vectorize(
         k = (Int64(n[id, 2]) - 1) * Ny + Int64(n[id, 1])
         ny = n[id, 3]
         nx = n[id, 4] 
+        etamx = 1 - nx/2-nx^2/2
+        etapx = 1 + nx/2-nx^2/2
+        etamy = 1 - ny/2-ny^2/2
+        etapy = 1 + ny/2-ny^2/2
         append!(id1, k)
         append!(id2, k)
-        append!(v, - ((1.0 - nx) * bxflat[k] +
-            (1.0 + nx) * bxflat[k-Ny] +
-            (1.0 - ny) * byflat[k] +
-            (1.0 + ny) * byflat[k-1]))
+        append!(v, - (etamx * bxflat[k] +
+            etapx * bxflat[k-Ny] +
+            etamy * byflat[k] +
+            etapy * byflat[k-1]))
         append!(id1, k)
         append!(id2, k-Ny)
-        append!(v, (1.0 + nx) * bxflat[k-Ny])
+        append!(v, etapx * bxflat[k-Ny])
         append!(id1, k)
         append!(id2, k+Ny)
-        append!(v, (1.0 - nx) * bxflat[k])
+        append!(v, etamx * bxflat[k])
         append!(id1, k)
         append!(id2, k-1)
-        append!(v, (1.0 + ny) * byflat[k-1])   
+        append!(v, etapy * byflat[k-1])   
         append!(id1, k)
         append!(id2, k+1)
-        append!(v, (1.0 - ny) * byflat[k])
+        append!(v, etamy * byflat[k])
     end
+    
     
     xi = sparse(id1, id2, v, Ny * Nx, Ny * Nx)
     minvflat = mflat.^(-1)

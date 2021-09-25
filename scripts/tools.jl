@@ -36,7 +36,7 @@ end
 
 function inPolygon(p::Array{Float64,2}, poly::Array{Float64,2})
     N = size(poly, 1)
-    b = Bool.(zeros(size(p, 1), 1))
+    isin = falses(size(p, 1))
     for k = 1:size(p, 1)
         j = N
         for i = 1:N
@@ -49,13 +49,13 @@ function inPolygon(p::Array{Float64,2}, poly::Array{Float64,2})
                     (p[k, 2] - poly[i, 2]) / (poly[j, 2] - poly[i, 2]) *
                     (poly[j, 1] - poly[i, 1]) < p[k, 1]
                 )
-                    b[k] = !b[k]
+                    isin[k] = !isin[k]
                 end
             end
             j = i
         end
     end
-    return b
+    return isin
 end
 
 
