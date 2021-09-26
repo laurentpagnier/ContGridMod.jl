@@ -1,37 +1,4 @@
-#include("plotting.jl")
-#include("ps_analysis.jl")
 using JSON
-
-
-
-function inPolygon_new(
-    point::Array{Tuple{Float64, Float64}, 1},
-    poly::Array{Tuple{Float64, Float64}, 1},
-)
-    N = length(poly)
-    Np = length(point)
-    b = falses(Np)
-    Threads.@threads for k in 1:Np
-        j = N
-        for i = 1:N
-            if (
-                ((poly[i][2] < point[k][2]) & (poly[j][2] >= point[k][2])) |
-                ((poly[j][2] < point[k][2]) & (poly[i][2] >= point[k][2]))
-            )
-                if (
-                    poly[i][1] +
-                    (point[k][2] - poly[i][2]) / (poly[j][2] - poly[i][2]) *
-                    (poly[j][1] - poly[i][1]) < point[k][1]
-                )
-                    b[k] = !b[k]
-                end
-            end
-            j = i
-        end
-    end
-    return b
-end
-
 
 
 function inPolygon(p::Array{Float64,2}, poly::Array{Float64,2})
@@ -68,7 +35,6 @@ function alberts_projection(
     R::Float64 = 6371.0
 )
     # see https://en.wikipedia.org/wiki/Albers_projection
-    # R = 6.371 #Earth radius in 1000km
     n = 1 / 2 * (sin(lat1) + sin(lat2))
     theta = n * (coord[:, 1] .- lon0)
     c = cos(lat1)^2 + 2 * n * sin(lat1)
@@ -102,6 +68,21 @@ function import_border(
         maximum(b[:,2]) - minimum(b[:,2])
         )
     return b / scale_factor, scale_factor
+end
+
+
+function get_discrete_values(
+    grid_coord::Array{Float64,2},
+    disc_coord::Array{Float64,2},
+    v::Array{Float64,1}
+)
+    disc_v = zeros(size(disc_coord,1))
+    for i in 1:size(disc_v,1)
+        id = argmin((grid_coord[:,1] .- disc_coord[i,1]).^2 +
+        (grid_coord[:,2] .- disc_coord[i,2]).^2)
+        disc_v[i] = v[id]
+    end
+    return disc_v
 end
 
 

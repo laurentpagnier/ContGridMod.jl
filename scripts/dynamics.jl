@@ -82,45 +82,45 @@ end
 
 
 function perform_dyn_sim_crank_nicolson(
-    isgridflat::BitArray,
+    isgrid::BitArray,
     xi::SparseMatrixCSC{Float64, Int64},
-    pflat::Array{Float64, 1},
-    minvflat::Array{Float64, 1},
-    gammaflat::Array{Float64, 1},
+    p::Array{Float64, 1},
+    minv::Array{Float64, 1},
+    gamma::Array{Float64, 1},
     th0::Array{Float64, 1};
     interval::Int64 = 10,
     Ndt::Int64 = 1000,
     dt::Float64 = 0.05
 )
     println("Total time: ", dt * Ndt)
-    N = sum(isgridflat)
+    N = sum(isgrid)
     M = 1 + Int64(ceil(Ndt/interval))
     omegas = zeros(N, M)
     thetas = zeros(N, M)
     ts = zeros(M)
     
-    x = [zeros(N); th0[isgridflat]]
+    x = [th0[isgrid]; zeros(N)]
     omegas[:, 1] = zeros(N)
-    thetas[:, 1] = copy(th0[isgridflat])  
+    thetas[:, 1] = copy(th0[isgrid])  
 
     ts = zeros(1 + Int64(ceil(Ndt/interval)))
 
     I = sparse(1:N, 1:N, ones(N))
     A = [I -dt / 2 * I;
-        - dt / 2 / dx^2 * sparse(1:N, 1:N, minvflat) * xi (I + dt/2 * sparse(1:N, 1:N, gammaflat))]
+        - dt / 2 / dx^2 * sparse(1:N, 1:N, minv) * xi (I + dt/2 * sparse(1:N, 1:N, gamma))]
     B = [I dt / 2 * I;
-         dt / 2 / dx^2 * sparse(1:N, 1:N, minvflat) * xi (I - dt/2 * sparse(1:N, 1:N, gammaflat))]
-    C = [zeros(N); dt * sparse(1:N, 1:N, minvflat) * pflat]
+         dt / 2 / dx^2 * sparse(1:N, 1:N, minv) * xi (I - dt/2 * sparse(1:N, 1:N, gamma))]
+    C = [zeros(N); dt * sparse(1:N, 1:N, minv) * p]
 
     @time begin
         for t in 1:Ndt
-            #x = A \ (B * x + C) way slower when dx -> 0
+            #x = A \ (B * x + C) # way slower when dx -> 0
             gmres!(x, A , B * x + C)
             if(mod(t,interval) == 0)
                 thetas[:,Int64(t/interval) + 1] = x[1:N]
                 omegas[:,Int64(t/interval) + 1] = x[N+1:end]
                 ts[Int64(t/interval) + 1] = t*dt
-                println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1])/sum(isgridflat))
+                println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1])/sum(isgrid))
             end
         end
     end
@@ -129,33 +129,33 @@ end
 
 
 function perform_dyn_sim_backward_euler(
-    isgridflat::BitArray,
+    isgrid::BitArray,
     xi::SparseMatrixCSC{Float64, Int64},
-    pflat::Array{Float64, 1},
-    minvflat::Array{Float64, 1},
-    gammaflat::Array{Float64, 1},
+    p::Array{Float64, 1},
+    minv::Array{Float64, 1},
+    gamma::Array{Float64, 1},
     th0::Array{Float64, 1};
     interval::Int64 = 10,
     Ndt::Int64 = 1000,
     dt::Float64 = 0.05
 )
     println("Total time: ", dt * Ndt)
-    N = sum(isgridflat)
+    N = sum(isgrid)
     M = 1 + Int64(ceil(Ndt/interval))
     omegas = zeros(N, M)
     thetas = zeros(N, M)
     ts = zeros(M)
     
-    x = [zeros(N); th0[isgridflat]]
+    x = [th0[isgrid]; zeros(N)]
     omegas[:,1] = zeros(N)
-    thetas[:,1] = copy(th0[isgridflat])  
+    thetas[:,1] = copy(th0[isgrid])  
 
     ts = zeros(1 + Int64(ceil(Ndt/interval)))
 
     I = sparse(1:N, 1:N, ones(N))
     A = [I -dt * I;
-        - dt / dx^2 * sparse(1:N, 1:N, minvflat) * xi (I + dt * sparse(1:N, 1:N, gammaflat))]
-    B = [zeros(N); dt * sparse(1:N, 1:N, minvflat) * pflat]
+        - dt / dx^2 * sparse(1:N, 1:N, minv) * xi (I + dt * sparse(1:N, 1:N, gamma))]
+    B = [zeros(N); dt * sparse(1:N, 1:N, minv) * p]
 
     @time begin
         for t in 1:Ndt
@@ -165,95 +165,9 @@ function perform_dyn_sim_backward_euler(
                 thetas[:,Int64(t/interval) + 1] = x[1:N]
                 omegas[:,Int64(t/interval) + 1] = x[N+1:end]
                 ts[Int64(t/interval) + 1] = t*dt
-                println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1])/sum(isgridflat))
+                println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1])/sum(isgrid))
             end
         end
     end
     return ts, thetas, omegas
-end
-
-
-function vectorize(
-    isinside::BitMatrix,
-    isborder::BitMatrix,
-    n::Array{Float64, 2},
-    bx::Array{Float64, 2},
-    by::Array{Float64, 2},
-    p::Array{Float64, 2},
-    m::Array{Float64, 2},
-    d::Array{Float64, 2},
-)
-    # flatten the m, d, p, bx and by matrices
-    isinsideflat = vec(isinside)
-    isgridflat = vec(isinside .| isborder)
-    bxflat = vec(bx)
-    byflat = vec(by)
-    pflat = vec(p)
-    mflat = vec(m)
-    dflat = vec(d)
-    Ny = size(bx,1)
-    Nx = size(bx,2)
-
-    id1 = Array{Int64,1}()
-    id2 = Array{Int64,1}()
-    v = Array{Float64,1}()
-    for k in 1:Nx*Ny
-        if(isinsideflat[k])
-            append!(id1, k)
-            append!(id2, k)
-            append!(v, - (bxflat[k] +
-                bxflat[k-Ny] +
-                byflat[k] +
-                byflat[k-1])
-                )
-            append!(id1, k)
-            append!(id2, k-Ny)
-            append!(v, bxflat[k-Ny])
-            append!(id1, k)
-            append!(id2, k+Ny)
-            append!(v, bxflat[k])
-            append!(id1, k)
-            append!(id2, k-1)
-            append!(v, byflat[k-1])
-            append!(id1, k)
-            append!(id2, k+1)
-            append!(v, byflat[k])            
-        end
-    end
-    
-    for id in 1:size(n, 1)
-        k = (Int64(n[id, 2]) - 1) * Ny + Int64(n[id, 1])
-        ny = n[id, 3]
-        nx = n[id, 4] 
-        etamx = 1 - nx/2-nx^2/2
-        etapx = 1 + nx/2-nx^2/2
-        etamy = 1 - ny/2-ny^2/2
-        etapy = 1 + ny/2-ny^2/2
-        append!(id1, k)
-        append!(id2, k)
-        append!(v, - (etamx * bxflat[k] +
-            etapx * bxflat[k-Ny] +
-            etamy * byflat[k] +
-            etapy * byflat[k-1]))
-        append!(id1, k)
-        append!(id2, k-Ny)
-        append!(v, etapx * bxflat[k-Ny])
-        append!(id1, k)
-        append!(id2, k+Ny)
-        append!(v, etamx * bxflat[k])
-        append!(id1, k)
-        append!(id2, k-1)
-        append!(v, etapy * byflat[k-1])   
-        append!(id1, k)
-        append!(id2, k+1)
-        append!(v, etamy * byflat[k])
-    end
-    
-    
-    xi = sparse(id1, id2, v, Ny * Nx, Ny * Nx)
-    minvflat = mflat.^(-1)
-    minvflat = minvflat[isgridflat]
-    gammaflat = dflat[isgridflat] .* minvflat
-    xi = SparseMatrixCSC{Float64, Int64}(xi[isgridflat,isgridflat])
-    return isinsideflat, pflat, minvflat, gammaflat, xi
 end

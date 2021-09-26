@@ -1,3 +1,236 @@
+function inPolygon_new(
+    point::Array{Tuple{Float64, Float64}, 1},
+    poly::Array{Tuple{Float64, Float64}, 1},
+)
+    N = length(poly)
+    Np = length(point)
+    b = falses(Np)
+    Threads.@threads for k in 1:Np
+        j = N
+        for i = 1:N
+            if (
+                ((poly[i][2] < point[k][2]) & (poly[j][2] >= point[k][2])) |
+                ((poly[j][2] < point[k][2]) & (poly[i][2] >= point[k][2]))
+            )
+                if (
+                    poly[i][1] +
+                    (point[k][2] - poly[i][2]) / (poly[j][2] - poly[i][2]) *
+                    (poly[j][1] - poly[i][1]) < point[k][1]
+                )
+                    b[k] = !b[k]
+                end
+            end
+            j = i
+        end
+    end
+    return b
+end
+
+
+
+function vectorize(
+    isinside::BitMatrix,
+    isborder::BitMatrix,
+    n::Array{Float64, 2},
+    bx::Array{Float64, 2},
+    by::Array{Float64, 2},
+    p::Array{Float64, 2},
+    m::Array{Float64, 2},
+    d::Array{Float64, 2},
+)
+    # flatten the m, d, p, bx and by matrices
+    isinsideflat = vec(isinside)
+    isgridflat = vec(isinside .| isborder)
+    bxflat = vec(bx)
+    byflat = vec(by)
+    pflat = vec(p)
+    mflat = vec(m)
+    dflat = vec(d)
+    Ny = size(bx,1)
+    Nx = size(bx,2)
+
+    id1 = Array{Int64,1}()
+    id2 = Array{Int64,1}()
+    v = Array{Float64,1}()
+    for k in 1:Nx*Ny
+        if(isinsideflat[k])
+            append!(id1, k)
+            append!(id2, k)
+            append!(v, - (bxflat[k] +
+                bxflat[k-Ny] +
+                byflat[k] +
+                byflat[k-1])
+                )
+            append!(id1, k)
+            append!(id2, k-Ny)
+            append!(v, bxflat[k-Ny])
+            append!(id1, k)
+            append!(id2, k+Ny)
+            append!(v, bxflat[k])
+            append!(id1, k)
+            append!(id2, k-1)
+            append!(v, byflat[k-1])
+            append!(id1, k)
+            append!(id2, k+1)
+            append!(v, byflat[k])            
+        end
+    end
+    
+    for id in 1:size(n, 1)
+        k = (Int64(n[id, 2]) - 1) * Ny + Int64(n[id, 1])
+        ny = n[id, 3]
+        nx = n[id, 4] 
+        etamx = 1 - nx/2-nx^2/2
+        etapx = 1 + nx/2-nx^2/2
+        etamy = 1 - ny/2-ny^2/2
+        etapy = 1 + ny/2-ny^2/2
+        append!(id1, k)
+        append!(id2, k)
+        append!(v, - (etamx * bxflat[k] +
+            etapx * bxflat[k-Ny] +
+            etamy * byflat[k] +
+            etapy * byflat[k-1]))
+        append!(id1, k)
+        append!(id2, k-Ny)
+        append!(v, etapx * bxflat[k-Ny])
+        append!(id1, k)
+        append!(id2, k+Ny)
+        append!(v, etamx * bxflat[k])
+        append!(id1, k)
+        append!(id2, k-1)
+        append!(v, etapy * byflat[k-1])   
+        append!(id1, k)
+        append!(id2, k+1)
+        append!(v, etamy * byflat[k])
+    end
+    
+    
+    xi = sparse(id1, id2, v, Ny * Nx, Ny * Nx)
+    minvflat = mflat.^(-1)
+    minvflat = minvflat[isgridflat]
+    gammaflat = dflat[isgridflat] .* minvflat
+    xi = SparseMatrixCSC{Float64, Int64}(xi[isgridflat,isgridflat])
+    return isinsideflat, pflat, minvflat, gammaflat, xi
+end
+
+
+
+function ctr_plot(isin::BitMatrix,
+    values::Array{Float64,2};
+    xlim::Tuple = (0.0, 0.0),
+    ylim::Tuple = (0.0, 0.0),
+    fill::Bool = true
+)
+    temp = copy(values)
+    temp[.!isin] .= NaN
+    if(ylim == (0.0, 0.0) || xlim == (0.0, 0.0))
+        return contour(temp, fill=fill)
+    else
+        return contour(temp, fill=fill, xlim=xlim, ylim=ylim)
+    end
+end
+
+
+function local_disturbance_old(
+    isinside::BitMatrix,
+    xrange::Array{Float64,1},
+    yrange::Array{Float64,1},
+    location::Array{Float64,1},
+    dP::Float64,
+    sigma::Float64
+)
+    dp = zeros(Ny, Nx)
+    for i = 1:Nx
+        for j = 1:Ny
+            if(isinside[j,i])
+                dp[j, i] = exp(-((xrange[i] - location[1])^2 +(yrange[j] - location[2])^2)/2/sigma^2)
+            end
+        end
+    end
+    return dP .* dp ./ trapz((yrange, xrange), dp)
+end
+
+
+
+function ctr_movie_old(
+    ts::Array{Float64, 1},
+    cont_value::Array{Float64, 3}; # timeseries from the continous model
+    tstart::Float64 = 0.0,
+    tend::Float64 = 0.0,
+    interval::Int64 = 1
+)
+    # !!!!!!!!!!!!! STILL SOME WORK TO DO
+    if(tstart != 0.0)
+        idstart = findall(tstart .< ts)[1]
+    else
+        idstart = 1 
+    end
+    if(tend != 0.0)
+        idend = findall(ts .< tend)[end]
+    else
+        idend = length(ts) 
+    end
+
+    @gif for t in idstart:interval:idend
+        #ctr_plot(isin, values)
+        heatmap(cont_value[:,:,t], clim = (-10., 10.))
+    end
+end
+
+
+function time_plot_old(
+    time::Array{Float64, 1},
+    cont_value::Array{Float64, 3}, # timeseries from the continous model
+    coord::Array{Float64, 2}; # locations from where we wantg to fetch data
+    borders::Array{Array{Float64,2},1} = Array{Float64,2}[],
+    xlabel::String = String("\$t\\;[s]\$"),
+    ylabel::String = String("\$\\omega \$"),
+    tstart::Float64 = 0.0,
+    tend::Float64 = 0.0
+)
+    # !!!!!!!!!!!!! STILL SOME WORK TO DO
+    if(tstart != 0.0)
+        idstart = findall(tstart .< ts)[1]
+    else
+        idstart = 1 
+    end
+    if(tend != 0.0)
+        idend = findall(time .< tend)[end]
+    else
+        idend = length(time) 
+    end
+    idin = findall(isinside)
+    cont_coord = zeros(length(idin), 2)
+    for i = 1:length(idin)
+        cont_coord[i,:] = [xrange[idin[i][2]], yrange[idin[i][1]]]
+    end
+    p1 = Plots.Plot()
+    for k in 1:size(coord, 1)
+        dx = cont_coord[:, 1] .- coord[k, 1]
+        dy = cont_coord[:, 2] .- coord[k, 2]
+        id = argmin(dx.^2 + dy.^2)
+        if(k == 1)
+            p1 = plot(time[idstart:idend], cont_value[idin[id][1], idin[id][2], idstart:idend])
+        else
+            p1 = plot!(time[idstart:idend], cont_value[idin[id][1], idin[id][2], idstart:idend])
+        end
+    end
+    plot!(legend = false, xlabel = xlabel, ylabel = ylabel)
+     
+    p2 = Plots.Plot()
+    for k in 1:size(coord, 1)
+        if(k == 1)
+            p2 = scatter([coord[k, 1]], [coord[k, 2]])
+        else
+            p2 = scatter!([coord[k, 1]], [coord[k, 2]])
+        end
+    end
+    for k in 1:length(borders)
+        p2 = plot!(borders[k][:, 1], borders[k][:, 2], color=:black,)
+    end
+    plot!(legend = false)
+    plot(p1, p2, layout=(1, 2), size=(800,300))
+end
 
 
 

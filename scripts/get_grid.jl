@@ -1,4 +1,3 @@
-
 function get_grid(
     border::Array{Float64, 2},
     dx::Float64
@@ -35,14 +34,12 @@ function get_grid(
     end
     
     # add a boundary layer encompassing the inside
-    #id = Array{Int64, 2}( reshape([], 0, 2) ) # defined as coordy coordx ny nx
     for j=2:Nx-1
        for i=2:Ny-1
             nx = isinside[i, j-1] - isinside[i, j+1]
             ny = isinside[i-1, j] - isinside[i+1, j]
             if((nx^2 + ny^2) > 0 && isinside[i,j] == false)
                 isgrid[i, j] = true
-                #id = vcat(id, Array{Int64,2}([i j]))
             end
        end
     end

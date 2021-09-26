@@ -1,5 +1,6 @@
 using HDF5
 using Plots
+
 function get_params_diff_fast(
     isinside::BitVector,
     isgrid::BitVector,
@@ -51,11 +52,12 @@ function get_params_diff_fast(
         pl[idgrid[k]] += dem[l]
     end
 
+    bm = sum(bline) / length(bline)
     Threads.@threads for l in 1:size(idb,1)
-        x2 = coord[idb[l,2], 1]
-        x1 = coord[idb[l,1], 1]
-        y2 = coord[idb[l,2], 2]
-        y1 = coord[idb[l,1], 2] 
+        x2 = coord[idb[l,2], 2]
+        x1 = coord[idb[l,1], 2]
+        y2 = coord[idb[l,2], 1]
+        y1 = coord[idb[l,1], 1] 
         dx_l = x2 - x1
         dy_l = y2 - y1
         ds2 = (dy_l^2 + dx_l^2)
@@ -69,8 +71,10 @@ function get_params_diff_fast(
             dist = abs.(beta) .* in_seg .* sqrt(ds2) + # if close to the segment
                 .!in_seg .* min.(sqrt.((x .- x1).^2 + (y .- y1).^2), # if close to the ends
                 sqrt.((x .- x2).^2 + (y .- y2).^2))
-            bx[idgrid[dist .< dmax]] .+= bline[l] * abs(cos(phi)) * dx^2 * patch
-            by[idgrid[dist .< dmax]] .+= bline[l] * abs(sin(phi)) * dx^2 * patch
+            if(bline[l] < 2*bm)
+                bx[idgrid[dist .< dmax]] .+= bline[l] * abs(cos(phi)) * dx^2 * patch
+                by[idgrid[dist .< dmax]] .+= bline[l] * abs(sin(phi)) * dx^2 * patch
+            end
         end
     end
     end
@@ -90,8 +94,8 @@ function get_params_diff_fast(
     # asign minimal values to the quantities
     m[isgrid] .= max.(m[isgrid], min_factor * sum(m) / sum(isgrid))
     d[isgrid] .= max.(d[isgrid], min_factor * sum(d) / sum(isgrid))
-    bx[isgrid] .= max.(bx[isgrid], min_factor * sum(bx) / sum(isgrid))
-    by[isgrid] .= max.(by[isgrid], min_factor * sum(by) / sum(isgrid))
+    #bx[isgrid] .= max.(bx[isgrid], min_factor * sum(bx) / sum(isgrid))
+    #by[isgrid] .= max.(by[isgrid], min_factor * sum(by) / sum(isgrid))
     
     # ensure that the integrals of the different quantities over
     # the medium is equivalent to their sum over the discrete model
@@ -114,7 +118,6 @@ function get_params_diff_fast(
 
     # ensure that the integral of the power injection is 0, i.e
     # that generation matches the demand.
-    
 
     id1 = Array{Int64,1}()
     id2 = Array{Int64,1}()

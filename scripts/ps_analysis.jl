@@ -1,23 +1,16 @@
 function set_ref_phase(
-    isinside::BitMatrix,
-    yrange::Array{Float64, 1},
-    xrange::Array{Float64, 1},
-    theta::Array{Float64, 2},
-    coord::Array{Float64, 1};
+    isgrid::BitVector,
+    grid_coord::Array{Float64, 2},
+    theta::Array{Float64, 1},
+    coord_ref::Array{Float64, 1};
     th_ref::Float64 = 0.0
 )
     # set the phases according to some reference phase at at a given location 
-    idin = findall(isinside)
-    cont_coord = zeros(length(idin), 2)
-    for i = 1:length(idin)
-        cont_coord[i, :] = [xrange[idin[i][2]], yrange[idin[i][1]]]
-    end
-    dx = cont_coord[:, 1] .- coord[1]
-    dy = cont_coord[:, 2] .- coord[2]
-    id = argmin(dx.^2 + dy.^2)
-    println(cont_coord[id,:], theta[idin[id]])
-    theta[isinside] .= theta[isinside] .- theta[idin[id]] .+ th_ref
-    return theta
+    id = argmin((grid_coord[:, 1] .- coord[1]).^2 +
+        (grid_coord[:, 2] .- coord[2]).^2)
+    temp = copy(theta)
+    temp[isinside] .= temp[isinside] .- temp[id] .+ th_ref
+    return temp
 end
 
 
