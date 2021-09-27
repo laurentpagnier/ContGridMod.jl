@@ -5,17 +5,17 @@ function hm_plot(
     isgrid::BitArray,
     Ny::Int64,
     Nx::Int64,
-    ts::Array{Float64, 1},
-    cont_value::Array{Float64, 1}; # timeseries from the continous model
+    values::Array{Float64, 1}; # timeseries from the continous model
     clim::Tuple = (0.0,0.0),
-    c = :viridis
+    c = :inferno,
+    cb_title::String = ""
 )
     temp = copy(values)
     temp[.!isgrid] .= NaN
     if(clim == (0.0, 0.0))
-        return Plots.heatmap(temp, c = c)
+        return Plots.heatmap(reshape(temp, Ny, Nx), c = c, colorbar_title=cb_title)
     else
-        return Plots.heatmap(temp, c = c, clim = clim)
+        return Plots.heatmap(reshape(temp, Ny, Nx), c = c, clim = clim, colorbar_title=cb_title)
     end
 end
 
@@ -99,5 +99,69 @@ function hm_movie(
         temp[.!isgrid] .= NaN
         clim = (minimum(cont_value), maximum(cont_value))
         heatmap(reshape(temp, Ny, Nx), fill=true, clim=clim)
+    end
+end
+
+function disc_plot(
+    coord::Array{Float64, 2},
+    values::Array{Float64, 1}
+)
+    temp = copy(values)
+    temp .-= minimum(temp)
+    temp ./= maximum(temp)
+    C(g::ColorGradient) = RGB[g[z] for z=temp]
+    g = :inferno
+    scatter(coord[:,2], coord[:,1], color=(cgrad(g) |> C), legend=false)
+    #scatter([0,0], [0,1], zcolor=[0,3], clims=(0.0,1.0),
+    #             xlims=(1,1.1), xshowaxis=false, yshowaxis=false, label="", grid=false)
+end
+
+
+function cmp_plot(
+    grid_coord::Array{Float64, 2},
+    cont_values::Array{Float64, 2},
+    cont_time::Array{Float64, 1},
+    disc_coord::Array{Float64, 2},
+    disc_values::Array{Float64, 2},
+    disc_time::Array{Float64, 1},
+    plot_coord::Array{Float64, 2};
+    tstart::Float64 = 0.0,
+    tend::Float64 = 0.0
+)
+    if(tstart != 0.0)
+        ids1 = findall(tstart .< cont_time)[1]
+        ids2 = findall(tstart .< disc_time)[1]
+    else
+        ids1 = 1 
+        ids2 = 1 
+    end
+    if(tend != 0.0)
+        ide1 = findall(cont_time .< tend)[end]
+        ide2 = findall(disc_time .< tend)[end]
+    else
+        ide1 = length(cont_time) 
+        ide2 = length(disc_time) 
+    end
+    
+    #println(size(grid_coord))
+    #println(size(cont_values))
+    #println(size(cont_time))
+    #println(size(disc_coord))
+    #println(size(disc_values))
+    #println(size(disc_time))
+    #println(size(plot_coord))
+
+    for k in 1:size(plot_coord, 1)
+        id2 = argmin((disc_coord[:, 1] .- plot_coord[k, 1]).^2 +
+            (disc_coord[:, 2] .- plot_coord[k, 2]).^2)
+        id1 = argmin((grid_coord[:, 1] .- disc_coord[id2, 1]).^2 +
+            (grid_coord[:, 2] .- disc_coord[id2, 2]).^2)
+        if(k == 1)
+            plot(cont_time[ids1:ide1], cont_values[id1, ids1:ide1])
+            plot!(disc_time[ids2:ide2], disc_values[id2, ids2:ide2], linestyle=:dash)
+        else
+            plot!(cont_time[ids1:ide1], cont_values[id1, ids1:ide1])
+            plot!(disc_time[ids2:ide2], disc_values[id2, ids2:ide2], linestyle=:dash)
+        end
     end
 end

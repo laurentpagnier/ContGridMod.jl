@@ -122,3 +122,21 @@ function back_to_2d(isgrid::BitVector, Ny::Int64, Nx::Int64, valueflat::Array{Fl
     end
     return value
 end
+
+
+function get_cont_values(
+    isgrid::BitVector,
+    grid_coord::Array{Float64, 2},
+    disc_coord::Array{Float64, 2},
+    disc_values::Array{Float64, 1}
+)
+    v = zeros(size(grid_coord,1))
+    for i = 1:size(grid_coord, 1)
+        id = argmin((grid_coord[i,1] .- disc_coord[:,1]).^2 +
+            (grid_coord[i,2] .- disc_coord[:,2]).^2)
+        v[i] = disc_values[id]
+    end
+    values = zeros(size(isgrid,1))
+    values[isgrid] = v
+    return values
+end
