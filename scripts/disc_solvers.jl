@@ -163,10 +163,13 @@ function find_gen(
     coord = alberts_projection(gps_coord[:,[2;1]] ./ (180 / pi) )
     coord = coord[:,[2,1]] / scale_factor
     idavail = findall((dm.gen .> 0.0) .& (dm.max_gen .> dP))
-    id = Int64.(zeros(size(coord,1)))
+    id = Int64.(zeros(size(coord,1))) # index in the full gen list
+    id2 = Int64.(zeros(size(coord,1))) # index in the producing gen list
     for i in 1:size(coord,1)
         id[i] = idavail[argmin((dm.coord[dm.idgen[idavail],1] .- coord[i,1]).^2 +
             (dm.coord[dm.idgen[idavail],2] .- coord[i,2]).^2)]
+        id2[i] = argmin((dm.coord[dm.idgen[idavail],1] .- coord[i,1]).^2 +
+            (dm.coord[dm.idgen[idavail],2] .- coord[i,2]).^2)
     end
-    return id
+    return id, id2
 end
