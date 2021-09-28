@@ -1,17 +1,50 @@
 using HDF5
 using Plots
+using SparseArrays
+
+mutable struct DiscModel
+    mg::Array{Float64, 1}
+    dg::Array{Float64, 1}
+    idgen::Array{Int64, 1}
+    coord::Array{Float64, 2}
+    dl::Array{Float64, 1}
+    idb::Array{Int64, 2}
+    bline::Array{Float64, 1}
+    load::Array{Float64, 1}
+    th::Array{Float64, 1}
+    gen::Array{Float64, 1}
+    max_gen::Array{Float64, 1}
+    Nbus::Int64
+end
+
+mutable struct ContModel
+    Nx::Int64
+    Ny::Int64
+    coord::Array{Float64, 2}
+    isinside::BitVector
+    isborder::BitVector
+    isgrid::BitVector
+    yrange::Array{Float64, 1}
+    xrange::Array{Float64, 1}
+    n::Array{Float64, 2}
+    dx::Float64
+    minv::Array{Float64, 1}
+    gamma::Array{Float64, 1}
+    p::Array{Float64, 1}
+    xi::SparseMatrixCSC{Float64, Int64}
+    bx::Array{Float64, 1}
+    by::Array{Float64, 1}
+    m::Array{Float64, 1}
+    d::Array{Float64, 1}
+    th::Array{Float64, 1}
+end
+
 
 function get_params(
-    isinside::BitVector,
-    isgrid::BitVector,
-    n::Array{Float64, 2},
-    Ny::Int64,
-    Nx::Int64,
-    dx::Float64,
-    lat_coord::Array{Float64, 2},
+    grid::Grid,
     scale_factor::Float64,
-    dataname::String,
-    savename::String;
+    dataname::String;
+    savename::String = "",
     def_val::Float64 = 1E-2,
     dmax::Float64 = 100.0,
     Niter::Int64 = 5000,
@@ -24,12 +57,11 @@ function get_params(
     # parameters
     
     # load the discrete model
-    gen, dem, bline, idb, idgen, coord, mg, dg, dl, th = load_discrete_model(dataname, scale_factor)
-    
-    grid_coord = lat_coord[isgrid,:]
-    idgrid = findall(isgrid)
-    idin = findall(isinside)
-    N = size(lat_coord, 1)
+    dm = load_discrete_model(dataname, scale_factor)
+    grid_coord = grid.coord[grid.isgrid,:]
+    idgrid = findall(grid.isgrid)
+    idin = findall(grid.isinside)
+    N = size(grid.coord, 1)
     m = zeros(N)
     d = zeros(N)
     pl = zeros(N)
@@ -37,29 +69,29 @@ function get_params(
     bx = zeros(N)
     by = zeros(N)
     @time begin
-    Threads.@threads for g in 1:length(idgen)
-        if(gen[g] > 0.0)
-            k = argmin((grid_coord[:, 1] .- coord[idgen[g],1]).^2 +
-                (grid_coord[:, 2] .- coord[idgen[g],2]).^2)
-            m[idgrid[k]] += mg[g]
-            d[idgrid[k]] += dg[g]
-            pg[idgrid[k]] += gen[g]
+    Threads.@threads for g in 1:length(dm.idgen)
+        if(dm.gen[g] > 0.0)
+            k = argmin((grid_coord[:, 1] .- dm.coord[dm.idgen[g],1]).^2 +
+                (grid_coord[:, 2] .- dm.coord[dm.idgen[g],2]).^2)
+            m[idgrid[k]] += dm.mg[g]
+            d[idgrid[k]] += dm.dg[g]
+            pg[idgrid[k]] += dm.gen[g]
         end
     end
     
-    Threads.@threads for l in 1:length(dl)
-        k = argmin((grid_coord[:, 1] .- coord[l,1]).^2 +
-            (grid_coord[:, 2] .- coord[l,2]).^2)
-        d[idgrid[k]] += dl[l]
-        pl[idgrid[k]] += dem[l]
+    Threads.@threads for l in 1:length(dm.dl)
+        k = argmin((grid_coord[:, 1] .- dm.coord[l,1]).^2 +
+            (grid_coord[:, 2] .- dm.coord[l,2]).^2)
+        d[idgrid[k]] += dm.dl[l]
+        pl[idgrid[k]] += dm.load[l]
     end
 
-    bm = sum(bline) / length(bline)
-    Threads.@threads for l in 1:size(idb,1)
-        x2 = coord[idb[l,2], 2]
-        x1 = coord[idb[l,1], 2]
-        y2 = coord[idb[l,2], 1]
-        y1 = coord[idb[l,1], 1] 
+    bm = sum(dm.bline) / length(dm.bline)
+    Threads.@threads for l in 1:size(dm.idb,1)
+        x2 = dm.coord[dm.idb[l,2], 2]
+        x1 = dm.coord[dm.idb[l,1], 2]
+        y2 = dm.coord[dm.idb[l,2], 1]
+        y1 = dm.coord[dm.idb[l,1], 1] 
         dx_l = x2 - x1
         dy_l = y2 - y1
         ds2 = (dy_l^2 + dx_l^2)
@@ -73,38 +105,38 @@ function get_params(
             dist = abs.(beta) .* in_seg .* sqrt(ds2) + # if close to the segment
                 .!in_seg .* min.(sqrt.((x .- x1).^2 + (y .- y1).^2), # if close to the ends
                 sqrt.((x .- x2).^2 + (y .- y2).^2))
-            if(bline[l] < 2*bm)
-                bx[idgrid[dist .< dmax]] .+= bline[l] * abs(cos(phi)) * dx^2 * patch
-                by[idgrid[dist .< dmax]] .+= bline[l] * abs(sin(phi)) * dx^2 * patch
+            if(dm.bline[l] < 2*bm) # if b is too large discard it
+                bx[idgrid[dist .< dmax]] .+= dm.bline[l] * abs(cos(phi)) * dx^2 * patch
+                by[idgrid[dist .< dmax]] .+= dm.bline[l] * abs(sin(phi)) * dx^2 * patch
             end
         end
     end
     end
     
-    bx[isgrid] .= max.(bx[isgrid], bmin)
-    by[isgrid] .= max.(by[isgrid], bmin)
+    bx[grid.isgrid] .= max.(bx[grid.isgrid], bmin)
+    by[grid.isgrid] .= max.(by[grid.isgrid], bmin)
     
     @time begin
-        m = heat_diff(isinside, n, m, dx, Ny, Nx, Niter = Niter, tau = tau)
-        d = heat_diff(isinside, n, d, dx, Ny, Nx, Niter = Niter, tau = tau)
-        pl = heat_diff(isinside, n, pl, dx, Ny, Nx, Niter = Niter, tau = tau)
-        pg = heat_diff(isinside, n, pg, dx, Ny, Nx, Niter = Niter, tau = tau)
-        bx = heat_diff(isinside, n, bx, dx, Ny, Nx, Niter = Niter, tau = tau)
-        by = heat_diff(isinside, n, by, dx, Ny, Nx, Niter = Niter, tau = tau)
+        m = heat_diff(grid, m, Niter = Niter, tau = tau)
+        d = heat_diff(grid, d, Niter = Niter, tau = tau)
+        pl = heat_diff(grid, pl, Niter = Niter, tau = tau)
+        pg = heat_diff(grid, pg, Niter = Niter, tau = tau)
+        bx = heat_diff(grid, bx, Niter = Niter, tau = tau)
+        by = heat_diff(grid, by, Niter = Niter, tau = tau)
     end
 
     # asign minimal values to the quantities
-    m[isgrid] .= max.(m[isgrid], min_factor * sum(m) / sum(isgrid))
-    d[isgrid] .= max.(d[isgrid], min_factor * sum(d) / sum(isgrid))
+    m[grid.isgrid] .= max.(m[grid.isgrid], min_factor * sum(m) / sum(grid.isgrid))
+    d[grid.isgrid] .= max.(d[grid.isgrid], min_factor * sum(d) / sum(grid.isgrid))
     #bx[isgrid] .= max.(bx[isgrid], min_factor * sum(bx) / sum(isgrid))
     #by[isgrid] .= max.(by[isgrid], min_factor * sum(by) / sum(isgrid))
     
     # ensure that the integrals of the different quantities over
     # the medium is equivalent to their sum over the discrete model
-    m = (sum(mg) / sum(m) / dx^2) .* m 
-    d = ((sum(dg) + sum(dl)) / sum(d) / dx^2) .* d
-    pl = (sum(dem) / sum(pl) / dx^2) .* pl
-    pg = (sum(gen) / sum(pg) / dx^2) .* pg
+    m = (sum(dm.mg) / sum(m) / dx^2) .* m 
+    d = ((sum(dm.dg) + sum(dm.dl)) / sum(d) / dx^2) .* d
+    pl = (sum(dm.load) / sum(pl) / dx^2) .* pl
+    pg = (sum(dm.gen) / sum(pg) / dx^2) .* pg
     
     # save the quantities
     #fid = h5open(savename, "w")
@@ -124,20 +156,21 @@ function get_params(
     id1 = Array{Int64,1}()
     id2 = Array{Int64,1}()
     v = Array{Float64,1}()
-    for k in 1:Nx*Ny
-        if(isinside[k])
+    
+    for k in 1:grid.Nx*grid.Ny
+        if(grid.isinside[k])
             append!(id1, k)
             append!(id2, k)
             append!(v, - (bx[k] +
-                bx[k-Ny] +
+                bx[k-grid.Ny] +
                 by[k] +
                 by[k-1])
                 )
             append!(id1, k)
-            append!(id2, k-Ny)
-            append!(v, bx[k-Ny])
+            append!(id2, k-grid.Ny)
+            append!(v, bx[k-grid.Ny])
             append!(id1, k)
-            append!(id2, k+Ny)
+            append!(id2, k+grid.Ny)
             append!(v, bx[k])
             append!(id1, k)
             append!(id2, k-1)
@@ -148,25 +181,25 @@ function get_params(
         end
     end
     
-    for id in 1:size(n, 1)
-        k = (Int64(n[id, 2]) - 1) * Ny + Int64(n[id, 1])
-        ny = n[id, 3]
-        nx = n[id, 4] 
-        etamx = 1 - nx/2-nx^2/2
-        etapx = 1 + nx/2-nx^2/2
-        etamy = 1 - ny/2-ny^2/2
-        etapy = 1 + ny/2-ny^2/2
+    for id in 1:size(grid.n, 1)
+        k = (Int64(grid.n[id, 2]) - 1) * grid.Ny + Int64(grid.n[id, 1])
+        ny = grid.n[id, 3]
+        nx = grid.n[id, 4] 
+        etamx = 1 - nx/2 - nx^2/2
+        etapx = 1 + nx/2 - nx^2/2
+        etamy = 1 - ny/2 - ny^2/2
+        etapy = 1 + ny/2 - ny^2/2
         append!(id1, k)
         append!(id2, k)
         append!(v, - (etamx * bx[k] +
-            etapx * bx[k-Ny] +
+            etapx * bx[k-grid.Ny] +
             etamy * by[k] +
             etapy * by[k-1]))
         append!(id1, k)
-        append!(id2, k-Ny)
-        append!(v, etapx * bx[k-Ny])
+        append!(id2, k-grid.Ny)
+        append!(v, etapx * bx[k-grid.Ny])
         append!(id1, k)
-        append!(id2, k+Ny)
+        append!(id2, k+grid.Ny)
         append!(v, etamx * bx[k])
         append!(id1, k)
         append!(id2, k-1)
@@ -176,28 +209,42 @@ function get_params(
         append!(v, etamy * by[k])
     end
     
-    xi = sparse(id1, id2, v, Ny * Nx, Ny * Nx)
+    xi = sparse(id1, id2, v, grid.Ny * grid.Nx, grid.Ny * grid.Nx)
     minv = m.^(-1)
-    minv = minv[isgrid]
-    gamma = d[isgrid] .* minv
-    xi = SparseMatrixCSC{Float64, Int64}(xi[isgrid, isgrid])
+    minv = minv[grid.isgrid]
+    gamma = d[grid.isgrid] .* minv
+    xi = SparseMatrixCSC{Float64, Int64}(xi[grid.isgrid, grid.isgrid])
     
     p = pg - pl 
-    p = p[isgrid] .- sum(p[isgrid]) / sum(isgrid)
-    return minv, gamma, p, xi, bx, by, m, d
+    p = p[grid.isgrid] .- sum(p[grid.isgrid]) / sum(grid.isgrid)
+    
+    cm = ContModel(
+        grid.Nx,
+        grid.Ny,
+        grid.coord,
+        grid.isinside,
+        grid.isborder,
+        grid.isgrid,
+        grid.yrange,
+        grid.xrange,
+        grid.n,
+        grid.dx,
+        minv,
+        gamma,
+        p,
+        xi,
+        bx,
+        by,
+        m,
+        d,
+        zeros(size(d)))
+    return cm
 end
 
 
-
-
-
 function heat_diff(
-    ininside::BitVector,
-    n::Array{Float64,2},
-    q::Array{Float64,1},
-    dx::Float64,
-    Ny::Int64,
-    Nx::Int64;
+    grid::Grid,
+    q::Array{Float64,1};
     Niter::Int64 = 5000,
     tau::Float64 = 0.001,
 )
@@ -207,15 +254,15 @@ function heat_diff(
     id2 = Array{Int64,1}()
     v = Array{Float64,1}()
     for k in 1:length(q)
-        if(ininside[k])
+        if(grid.isinside[k])
             append!(id1, k)
             append!(id2, k)
             append!(v, -4.0)
             append!(id1, k)
-            append!(id2, k-Ny)
+            append!(id2, k-grid.Ny)
             append!(v, 1.0)
             append!(id1, k)
-            append!(id2, k+Ny)
+            append!(id2, k+grid.Ny)
             append!(v, 1.0)
             append!(id1, k)
             append!(id2, k-1)
@@ -226,10 +273,10 @@ function heat_diff(
         end
     end
     
-    for id in 1:size(n, 1)
-        k = (Int64(n[id, 2]) - 1) * Ny + Int64(n[id, 1])
-        ny = n[id, 3]
-        nx = n[id, 4] 
+    for id in 1:size(grid.n, 1)
+        k = (Int64(grid.n[id, 2]) - 1) * grid.Ny + Int64(grid.n[id, 1])
+        ny = grid.n[id, 3]
+        nx = grid.n[id, 4] 
         etamx = 1 - nx/2-nx^2/2
         etapx = 1 + nx/2-nx^2/2
         etamy = 1 - ny/2-ny^2/2
@@ -241,10 +288,10 @@ function heat_diff(
             etamy +
             etapy))
         append!(id1, k)
-        append!(id2, k-Ny)
+        append!(id2, k-grid.Ny)
         append!(v, etapx)
         append!(id1, k)
-        append!(id2, k+Ny)
+        append!(id2, k+grid.Ny)
         append!(v, etamx)
         append!(id1, k)
         append!(id2, k-1)
@@ -253,9 +300,9 @@ function heat_diff(
         append!(id2, k+1)
         append!(v, etamy)
     end
-
-    xi = sparse(id1, id2, v, Ny * Nx, Ny * Nx)
-    N = Ny * Nx
+    
+    N = grid.Ny * grid.Nx
+    xi = sparse(id1, id2, v, N, N)
     I = sparse(1:N, 1:N, ones(N))
     A = 2.0 .* I - tau .* xi / dx^2
     B = 2.0 .* I + tau .* xi / dx^2
@@ -274,15 +321,21 @@ function load_discrete_model(
     scaling_factor::Float64
 )
     data = h5read(dataname, "/")
-    mg = vec(data["gen_inertia"])
-    dg = vec(data["gen_prim_ctrl"])
-    idgen = Int64.(vec(data["gen"][:, 1]))
     coord = alberts_projection( data["bus_coord"] ./ (180 / pi) )
-    dl = vec(data["load_freq_coef"])
-    idb = Int64.(data["branch"][:, 1:2])
-    bline = 1 ./ data["branch"][:, 4]
-    dem = vec(data["bus"][:, 3]) / 100.0
-    th = vec(data["bus"][:, 9]) / 180.0 * pi
-    gen = vec(data["gen"][:, 2]) / 100.0
-    return gen, dem, bline, idb, idgen, coord[:,[2,1]] / scaling_factor, mg, dg, dl, th
+    coord = coord[:,[2,1]] / scaling_factor
+    dm = DiscModel(
+        vec(data["gen_inertia"]),
+        vec(data["gen_prim_ctrl"]),
+        Int64.(vec(data["gen"][:, 1])),
+        coord,
+        vec(data["load_freq_coef"]),
+        Int64.(data["branch"][:, 1:2]),
+        1.0 ./ data["branch"][:, 4],
+        vec(data["bus"][:, 3]) / 100.0,
+        vec(data["bus"][:, 9]) / 180.0 * pi,
+        vec(data["gen"][:, 2]) / 100.0,
+        vec(data["gen"][:, 9]) / 100.0,
+        length(data["load_freq_coef"])
+        )
+    return dm
 end

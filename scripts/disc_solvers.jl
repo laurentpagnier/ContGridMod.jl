@@ -144,7 +144,7 @@ function NRsolver(
             V[idpq] -= x[n:end]
         end
         error = maximum(abs.(dPQ))
-        iter += 1 
+        iter += 1
     end
 	if(iter == maxiter)
         println("Max iteration reached, error: ", error)
@@ -152,3 +152,21 @@ function NRsolver(
     return V, theta, iter 
 end
 
+
+function find_gen(
+    dm::DiscModel,
+    gps_coord::Array{Float64, 2},
+    dP::Float64;
+    scale_factor::Float64 = 1.0
+)
+    #find the the nearest generator that can "withstand" a dP fault
+    coord = alberts_projection(gps_coord[:,[2;1]] ./ (180 / pi) )
+    coord = coord[:,[2,1]] / scale_factor
+    idavail = findall((dm.gen .> 0.0) .& (dm.max_gen .> dP))
+    id = Int64.(zeros(size(coord,1)))
+    for i in 1:size(coord,1)
+        id[i] = idavail[argmin((dm.coord[dm.idgen[idavail],1] .- coord[i,1]).^2 +
+            (dm.coord[dm.idgen[idavail],2] .- coord[i,2]).^2)]
+    end
+    return id
+end

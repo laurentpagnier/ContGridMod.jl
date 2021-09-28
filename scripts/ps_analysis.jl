@@ -1,16 +1,12 @@
-function set_ref_phase(
-    isgrid::BitVector,
-    grid_coord::Array{Float64, 2},
-    theta::Array{Float64, 1},
+function set_ref_phase!(
+    contmod::ContModel,
     coord_ref::Array{Float64, 1};
     th_ref::Float64 = 0.0
 )
     # set the phases according to some reference phase at at a given location 
-    id = argmin((grid_coord[:, 1] .- coord[1]).^2 +
-        (grid_coord[:, 2] .- coord[2]).^2)
-    temp = copy(theta)
-    temp[isinside] .= temp[isinside] .- temp[id] .+ th_ref
-    return temp
+    id = argmin((contmod.coord[contmod.isgrid, 1] .- coord_ref[1]).^2 +
+        (contmod.coord[contmod.isgrid, 2] .- coord_ref[2]).^2)
+    contmod.th[contmod.isgrid] .= contmod.th[contmod.isgrid] .- contmod.th[id] .+ th_ref
 end
 
 

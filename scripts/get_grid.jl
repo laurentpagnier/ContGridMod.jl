@@ -1,3 +1,16 @@
+mutable struct Grid
+    Nx::Int64
+    Ny::Int64
+    coord::Array{Float64, 2}
+    isinside::BitVector
+    isborder::BitVector
+    isgrid::BitVector
+    yrange::Array{Float64, 1}
+    xrange::Array{Float64, 1}
+    n::Array{Float64, 2}
+    dx::Float64
+end
+
 function get_grid(
     border::Array{Float64, 2},
     dx::Float64
@@ -103,5 +116,8 @@ function get_grid(
     end
 
     isinside = isgrid .& .!isborder
-    return Nx, Ny, Float64.(coord), vec(isinside), vec(isborder), vec(isgrid), n
+    
+    grid = Grid(Nx, Ny, Float64.(coord), vec(isinside),
+        vec(isborder), vec(isgrid), xrange, yrange, n, dx)
+    return grid
 end

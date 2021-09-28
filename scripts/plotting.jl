@@ -2,29 +2,37 @@ using Plots
 
 
 function hm_plot(
-    isgrid::BitArray,
-    Ny::Int64,
-    Nx::Int64,
+    contmodel::ContModel,
     values::Array{Float64, 1}; # timeseries from the continous model
-    clim::Tuple = (0.0,0.0),
+    borders::Array{Array{Float64,2},1} = Array{Float64,2}[],
+    clim::Tuple{Float64, Float64} = (0.0,0.0),
     c = :inferno,
     cb_title::String = ""
 )
     temp = copy(values)
-    temp[.!isgrid] .= NaN
+    temp[.!contmodel.isinside] .= NaN
     if(clim == (0.0, 0.0))
-        return Plots.heatmap(reshape(temp, Ny, Nx), c = c, colorbar_title=cb_title)
+        Plots.heatmap(contmodel.yrange, contmodel.xrange,
+            reshape(temp, contmodel.Ny, contmodel.Nx),
+            c = c, colorbar_title=cb_title)
     else
-        return Plots.heatmap(reshape(temp, Ny, Nx), c = c, clim = clim, colorbar_title=cb_title)
+        Plots.heatmap(contmodel.yrange, contmodel.xrange,
+        reshape(temp, contmodel.Ny, contmodel.Nx),
+        c = c, clim = clim, colorbar_title=cb_title)
     end
+    for k in 1:length(borders)
+        p2 = plot!(borders[k][:, 1], borders[k][:, 2], color=:black,linewidth=3.0)
+    end
+    plot!(legend=false, grid=false, showaxis=:hide, xaxis=nothing,
+    yaxis=nothing)
 end
 
 
 function time_plot(
+    contmod::ContModel,
     time::Array{Float64, 1},
-    cont_value::Array{Float64, 2}, # timeseries from the continous model
-    grid_coord::Array{Float64, 2}, # t
-    coord::Array{Float64, 2}; # locations from where we wantg to fetch data
+    values::Array{Float64, 2}, # timeseries from the continous model
+    coord::Array{Float64, 2}; 
     borders::Array{Array{Float64,2},1} = Array{Float64,2}[],
     xlabel::String = String("\$t\\;[s]\$"),
     ylabel::String = String("\$\\omega \$"),
@@ -41,6 +49,8 @@ function time_plot(
     else
         idend = length(time) 
     end
+    
+    grid_coord = contmod.coord[contmod.isgrid,:]
 
     p1 = Plots.Plot()
     for k in 1:size(coord, 1)
@@ -48,9 +58,9 @@ function time_plot(
         dy = grid_coord[:, 2] .- coord[k, 2]
         id = argmin(dx.^2 + dy.^2)
         if(k == 1)
-            p1 = plot(time[idstart:idend], cont_value[id, idstart:idend])
+            p1 = plot(time[idstart:idend], values[id, idstart:idend])
         else
-            p1 = plot!(time[idstart:idend], cont_value[id, idstart:idend])
+            p1 = plot!(time[idstart:idend], values[id, idstart:idend])
         end
     end
     plot!(legend = false, xlabel = xlabel, ylabel = ylabel)
@@ -72,16 +82,13 @@ end
 
 
 function hm_movie(
-    isgrid::BitArray,
-    Ny::Int64,
-    Nx::Int64,
+    contmod::ContModel,
     ts::Array{Float64, 1},
-    cont_value::Array{Float64, 2}; # timeseries from the continous model
+    values::Array{Float64, 2}; # timeseries from the continous model
     tstart::Float64 = 0.0,
     tend::Float64 = 0.0,
     interval::Int64 = 1
 )
-    # !!!!!!!!!!!!! STILL SOME WORK TO DO
     if(tstart != 0.0)
         idstart = findall(tstart .< ts)[1]
     else
@@ -94,26 +101,32 @@ function hm_movie(
     end
 
     @gif for t in idstart:interval:idend
-        temp = zeros(size(isgrid))
-        temp[isgrid] = cont_value[:,t]
-        temp[.!isgrid] .= NaN
-        clim = (minimum(cont_value), maximum(cont_value))
-        heatmap(reshape(temp, Ny, Nx), fill=true, clim=clim)
+        temp = zeros(size(contmod.isgrid))
+        temp[contmod.isgrid] = values[:,t]
+        temp[.!contmod.isgrid] .= NaN
+        clim = (minimum(values), maximum(values))
+        heatmap(reshape(temp, contmod.Ny, contmod.Nx), fill=true, clim=clim)
     end
 end
 
 function disc_plot(
     coord::Array{Float64, 2},
-    values::Array{Float64, 1}
+    values::Array{Float64, 1};
+    borders::Array{Array{Float64,2},1} = Array{Float64,2}[]
 )
     temp = copy(values)
     temp .-= minimum(temp)
     temp ./= maximum(temp)
     C(g::ColorGradient) = RGB[g[z] for z=temp]
     g = :inferno
-    scatter(coord[:,2], coord[:,1], color=(cgrad(g) |> C), legend=false)
-    #scatter([0,0], [0,1], zcolor=[0,3], clims=(0.0,1.0),
-    #             xlims=(1,1.1), xshowaxis=false, yshowaxis=false, label="", grid=false)
+    plot() # here to "clear" the figure
+    for k in 1:length(borders)
+        p2 = plot!(borders[k][:, 1], borders[k][:, 2], color=:black,)
+    end
+    scatter!(coord[:,2], coord[:,1], color=(cgrad(g) |> C), legend=false,
+        markerstrokecolor=(cgrad(g) |> C), grid=false,
+        showaxis=:hide, xaxis=nothing, yaxis=nothing, markersize=6.0)
+
 end
 
 
@@ -142,14 +155,6 @@ function cmp_plot(
         ide1 = length(cont_time) 
         ide2 = length(disc_time) 
     end
-    
-    #println(size(grid_coord))
-    #println(size(cont_values))
-    #println(size(cont_time))
-    #println(size(disc_coord))
-    #println(size(disc_values))
-    #println(size(disc_time))
-    #println(size(plot_coord))
 
     for k in 1:size(plot_coord, 1)
         id2 = argmin((disc_coord[:, 1] .- plot_coord[k, 1]).^2 +
