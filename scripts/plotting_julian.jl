@@ -130,7 +130,7 @@ function disc_plot(
         cb_title=cb_title)
     else
         scatter!(coord[:,2], coord[:,1], zcolor=values, legend=false, clim=clim, grid=false,
-        msw=0, showaxis=:hide, xaxis=nothing, yaxis=nothing, markersize=6.0, c=c, cbar=cbar,
+        msw=0, showaxis=:hide, xaxis=nothing, yaxis=nothing, markersize=6.0, c=c, cbar=:bottom,
         cb_title=cb_title)
     end
 

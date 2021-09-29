@@ -134,8 +134,8 @@ function perform_dyn_sim_backward_euler(
 
     I = sparse(1:N, 1:N, ones(N))
     A = [I -dt * I;
-        - dt / dx^2 * sparse(1:N, 1:N, minv) * xi (I + dt * sparse(1:N, 1:N, gamma))]
-    B = [zeros(N); dt * sparse(1:N, 1:N, minv) * p]
+        - dt / dx^2 * sparse(1:N, 1:N, contmod.minv) * contmod.xi (I + dt * sparse(1:N, 1:N, contmod.gamma))]
+    B = [zeros(N); dt * sparse(1:N, 1:N, contmod.minv) * contmod.p]
 
     @time begin
         for t in 1:Ndt
@@ -145,7 +145,9 @@ function perform_dyn_sim_backward_euler(
                 thetas[:,Int64(t/interval) + 1] = x[1:N]
                 omegas[:,Int64(t/interval) + 1] = x[N+1:end]
                 ts[Int64(t/interval) + 1] = t*dt
-                println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1])/sum(isgrid))
+                if(mod(t, 20) == 0)
+                    println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1])/sum(contmod.isgrid))
+                end
             end
         end
     end

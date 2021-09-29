@@ -11,6 +11,7 @@ function add_local_disturbance!(
         dp[k] = exp(-((grid_coord[k,1] - location[1])^2 + (grid_coord[k,2] - location[2])^2)/2/sigma^2)
     end
     contmod.p += dP .* dp ./ sum(dp) / dx^2
+    return dP .* dp ./ sum(dp) / dx^2
 end
 
 
