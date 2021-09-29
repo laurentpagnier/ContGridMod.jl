@@ -7,25 +7,25 @@ function hm_plot(
     borders::Array{Array{Float64,2},1} = Array{Float64,2}[],
     clim::Tuple{Float64, Float64} = (0.0,0.0),
     c = :inferno,
-    cb_title::String = ""
+    cb_title::String = "",
+    cbar::Bool = true
 )
     temp = copy(values)
     temp[.!contmodel.isinside] .= NaN
     if(clim == (0.0, 0.0))
         Plots.heatmap(contmodel.yrange, contmodel.xrange,
             reshape(temp, contmodel.Ny, contmodel.Nx),
-            #c = c, colorbar_title=cb_title)
-            c = c, colorbar=false)
+            c = c, colorbar_title=cb_title, cbar=cbar)
     else
         Plots.heatmap(contmodel.yrange, contmodel.xrange,
         reshape(temp, contmodel.Ny, contmodel.Nx),
-        c = c, clim = clim, colorbar_title=cb_title)
+        c = c, clim = clim, colorbar_title=cb_title, cbar=cbar)
     end
     for k in 1:length(borders)
         p2 = plot!(borders[k][:, 1], borders[k][:, 2], color=:black,linewidth=3.0)
     end
     plot!(legend=false, grid=false, showaxis=:hide, xaxis=nothing,
-    yaxis=nothing, aspect_ratio=:equal)
+    yaxis=nothing)
 end
 
 
@@ -50,7 +50,7 @@ function time_plot(
     else
         idend = length(time) 
     end
-    cp = palette(:tab10)
+    
     grid_coord = contmod.coord[contmod.isgrid,:]
 
     p1 = Plots.Plot()
@@ -59,24 +59,23 @@ function time_plot(
         dy = grid_coord[:, 2] .- coord[k, 2]
         id = argmin(dx.^2 + dy.^2)
         if(k == 1)
-            p1 = plot(time[idstart:idend], values[id, idstart:idend], color=cp[k])
+            p1 = plot(time[idstart:idend], values[id, idstart:idend])
         else
-            p1 = plot!(time[idstart:idend], values[id, idstart:idend], color=cp[k])
+            p1 = plot!(time[idstart:idend], values[id, idstart:idend])
         end
     end
-    plot!(legend = false, xlabel = xlabel, ylabel = ylabel, grid=false, linewidth=1)
+    plot!(legend = false, xlabel = xlabel, ylabel = ylabel)
      
     p2 = Plots.Plot()
     for k in 1:size(coord, 1)
         if(k == 1)
-            p2 = scatter([coord[k, 1]], [coord[k, 2]], color=cp[k], markerstrokecolor=cp[k], markersize=5)
+            p2 = scatter([coord[k, 1]], [coord[k, 2]])
         else
-            p2 = scatter!([coord[k, 1]], [coord[k, 2]], color=cp[k], markerstrokecolor=cp[k], markersize=5)
+            p2 = scatter!([coord[k, 1]], [coord[k, 2]])
         end
     end
     for k in 1:length(borders)
-        p2 = plot!(borders[k][:, 1], borders[k][:, 2], color=:black,
-        grid=false, showaxis=:hide, xaxis=nothing, yaxis=nothing, linewidth=3.0, aspect_ratio=:equal)
+        p2 = plot!(borders[k][:, 1], borders[k][:, 2], color=:black,)
     end
     plot!(legend = false)
     plot(p1, p2, layout=(1, 2), size=(800,300))
@@ -107,27 +106,33 @@ function hm_movie(
         temp[contmod.isgrid] = values[:,t]
         temp[.!contmod.isgrid] .= NaN
         clim = (minimum(values), maximum(values))
-        heatmap(reshape(temp, contmod.Ny, contmod.Nx), fill=true, clim=clim, aspect_ratio=:equal)
+        heatmap(reshape(temp, contmod.Ny, contmod.Nx), fill=true, clim=clim)
     end
 end
 
 function disc_plot(
     coord::Array{Float64, 2},
     values::Array{Float64, 1};
-    borders::Array{Array{Float64,2},1} = Array{Float64,2}[]
+    borders::Array{Array{Float64,2},1} = Array{Float64,2}[],
+    clim::Tuple{Float64, Float64} = (0.0,0.0),
+    c::Symbol = :inferno,
+    cbar::Bool = true,
+    cb_title::String = ""
 )
-    temp = copy(values)
-    temp .-= minimum(temp)
-    temp ./= maximum(temp)
-    C(g::ColorGradient) = RGB[g[z] for z=temp]
+    plot()
     g = :inferno
-    plot() # here to "clear" the figure
     for k in 1:length(borders)
-        p2 = plot!(borders[k][:, 1], borders[k][:, 2], color=:black, linewidth=3.0)
+        p2 = plot!(borders[k][:, 1], borders[k][:, 2], color=:black, lw=3.0)
     end
-    scatter!(coord[:,2], coord[:,1], color=(cgrad(g) |> C), legend=false,
-        markerstrokecolor=(cgrad(g) |> C), grid=false,
-        showaxis=:hide, xaxis=nothing, yaxis=nothing, markersize=6.0)
+    if (clim==(0.0,0.0))
+        scatter!(coord[:,2], coord[:,1], zcolor=values, legend=false, grid=false,
+        msw=0, showaxis=:hide, xaxis=nothing, yaxis=nothing, markersize=6.0, c=c, cbar=cbar,
+        cb_title=cb_title)
+    else
+        scatter!(coord[:,2], coord[:,1], zcolor=values, legend=false, clim=clim, grid=false,
+        msw=0, showaxis=:hide, xaxis=nothing, yaxis=nothing, markersize=6.0, c=c, cbar=cbar,
+        cb_title=cb_title)
+    end
 
 end
 
