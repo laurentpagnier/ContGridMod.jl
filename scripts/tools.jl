@@ -27,7 +27,7 @@ end
 
 
 function alberts_projection(
-    coord::Array{Float64,2};
+    coord::Array{Float64,2}; # as lon lat
     lon0::Float64 = 13.37616 / 180 * pi,
     lat0::Float64 = 46.94653 / 180 * pi,
     lat1::Float64 = 10 / 180 * pi,

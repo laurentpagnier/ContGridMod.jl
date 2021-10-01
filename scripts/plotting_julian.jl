@@ -19,13 +19,13 @@ function hm_plot(
     else
         Plots.heatmap(contmodel.yrange, contmodel.xrange,
         reshape(temp, contmodel.Ny, contmodel.Nx),
-        c = c, clim = clim, colorbar_title=cb_title, cbar=cbar)
+        c = c, clim = clim, colorbar_title=cb_title, cbar=cbar, colorbar=:bottom)
     end
     for k in 1:length(borders)
         p2 = plot!(borders[k][:, 1], borders[k][:, 2], color=:black,linewidth=3.0)
     end
     plot!(legend=false, grid=false, showaxis=:hide, xaxis=nothing,
-    yaxis=nothing)
+    yaxis=nothing, colorbar=:bottom)
 end
 
 

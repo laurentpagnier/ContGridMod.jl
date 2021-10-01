@@ -55,8 +55,8 @@ function time_plot(
 
     p1 = Plots.Plot()
     for k in 1:size(coord, 1)
-        dx = grid_coord[:, 1] .- coord[k, 1]
-        dy = grid_coord[:, 2] .- coord[k, 2]
+        dx = grid_coord[:, 1] .- coord[k, 2]
+        dy = grid_coord[:, 2] .- coord[k, 1]
         id = argmin(dx.^2 + dy.^2)
         if(k == 1)
             p1 = plot(time[idstart:idend], values[id, idstart:idend], color=cp[k])
@@ -123,7 +123,7 @@ function disc_plot(
     g = :inferno
     plot() # here to "clear" the figure
     for k in 1:length(borders)
-        p2 = plot!(borders[k][:, 1], borders[k][:, 2], color=:black, linewidth=3.0)
+        plot!(borders[k][:, 1], borders[k][:, 2], color=:black, linewidth=3.0)
     end
     scatter!(coord[:,2], coord[:,1], color=(cgrad(g) |> C), legend=false,
         markerstrokecolor=(cgrad(g) |> C), grid=false,
