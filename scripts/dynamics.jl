@@ -10,13 +10,13 @@ function perform_dyn_sim(
     method::String="crank-nicolson"
 )
 
-    if(method == "crank-nicolson")
+    if(method == "crank-nicolson" || method == "cn")
         return ts, thetas, omegas = perform_dyn_sim_crank_nicolson(
             contmod; interval, Ndt, dt)  
-    elseif(method == "backward-euler")
+    elseif(method == "backward-euler" || method == "be")
         return ts, thetas, omegas = perform_dyn_sim_backward_euler(
             contmod; interval, Ndt, dt)    
-    elseif(method == "forward")
+    elseif(method == "forward" || method == "cf")
         return ts, thetas, omegas = perform_dyn_sim_forward(
             contmod; interval, Ndt, dt)
     else
@@ -145,9 +145,7 @@ function perform_dyn_sim_backward_euler(
                 thetas[:,Int64(t/interval) + 1] = x[1:N]
                 omegas[:,Int64(t/interval) + 1] = x[N+1:end]
                 ts[Int64(t/interval) + 1] = t*dt
-                if(mod(t, 20) == 0)
-                    println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1])/sum(contmod.isgrid))
-                end
+                println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1])/sum(contmod.isgrid))
             end
         end
     end
