@@ -84,7 +84,7 @@ function perform_dyn_sim_crank_nicolson(
     thetas = zeros(N, M)
     ts = zeros(M)
     
-    x = [contmod.th[contmod.isgrid]; zeros(N)]
+    x = [copy(contmod.th[contmod.isgrid]); zeros(N)]
     omegas[:, 1] = zeros(N)
     thetas[:, 1] = copy(contmod.th[contmod.isgrid])  
 
@@ -126,7 +126,7 @@ function perform_dyn_sim_backward_euler(
     thetas = zeros(N, M)
     ts = zeros(M)
     
-    x = [contmod.th[contmod.isgrid]; zeros(N)]
+    x = [copy(contmod.th[contmod.isgrid]); zeros(N)]
     omegas[:,1] = zeros(N)
     thetas[:,1] = copy(contmod.th[contmod.isgrid])  
 

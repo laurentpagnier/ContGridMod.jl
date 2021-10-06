@@ -14,8 +14,8 @@ function hm_plot(
     if(clim == (0.0, 0.0))
         Plots.heatmap(contmodel.yrange, contmodel.xrange,
             reshape(temp, contmodel.Ny, contmodel.Nx),
-            c = c, colorbar_title=cb_title)
-            #c = c, colorbar=false)
+            #c = c, colorbar_title=cb_title)
+            c = c, colorbar=false)
     else
         Plots.heatmap(contmodel.yrange, contmodel.xrange,
         reshape(temp, contmodel.Ny, contmodel.Nx),

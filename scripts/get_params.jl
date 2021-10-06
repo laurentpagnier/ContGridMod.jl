@@ -339,3 +339,72 @@ function load_discrete_model(
         )
     return dm
 end
+
+
+function update_params!(
+    contmod::ContModel
+)
+    # update xi, minv and gamma
+
+    id1 = Array{Int64,1}()
+    id2 = Array{Int64,1}()
+    v = Array{Float64,1}()
+    
+    for k in 1:contmod.Nx*contmod.Ny
+        if(contmod.isinside[k])
+            append!(id1, k)
+            append!(id2, k)
+            append!(v, - (contmod.bx[k] +
+                contmod.bx[k-contmod.Ny] +
+                contmod.by[k] +
+                contmod.by[k-1])
+                )
+            append!(id1, k)
+            append!(id2, k-contmod.Ny)
+            append!(v, contmod.bx[k-contmod.Ny])
+            append!(id1, k)
+            append!(id2, k+contmod.Ny)
+            append!(v, contmod.bx[k])
+            append!(id1, k)
+            append!(id2, k-1)
+            append!(v, contmod.by[k-1])
+            append!(id1, k)
+            append!(id2, k+1)
+            append!(v, contmod.by[k])
+        end
+    end
+    
+    for id in 1:size(contmod.n, 1)
+        k = (Int64(contmod.n[id, 2]) - 1) * contmod.Ny + Int64(contmod.n[id, 1])
+        ny = contmod.n[id, 3]
+        nx = contmod.n[id, 4] 
+        etamx = 1 - nx/2 - nx^2/2
+        etapx = 1 + nx/2 - nx^2/2
+        etamy = 1 - ny/2 - ny^2/2
+        etapy = 1 + ny/2 - ny^2/2
+        append!(id1, k)
+        append!(id2, k)
+        append!(v, - (etamx * contmod.bx[k] +
+            etapx * contmod.bx[k-contmod.Ny] +
+            etamy * contmod.by[k] +
+            etapy * contmod.by[k-1]))
+        append!(id1, k)
+        append!(id2, k-contmod.Ny)
+        append!(v, etapx * contmod.bx[k-contmod.Ny])
+        append!(id1, k)
+        append!(id2, k+contmod.Ny)
+        append!(v, etamx * contmod.bx[k])
+        append!(id1, k)
+        append!(id2, k-1)
+        append!(v, etapy * contmod.by[k-1])   
+        append!(id1, k)
+        append!(id2, k+1)
+        append!(v, etamy * contmod.by[k])
+    end
+    
+    xi = sparse(id1, id2, v, contmod.Ny * contmod.Nx, contmod.Ny * contmod.Nx)
+    minv = contmod.m.^(-1)
+    contmod.minv = minv[contmod.isgrid]
+    contmod.gamma = contmod.d[contmod.isgrid] .* minv[contmod.isgrid]
+    contmod.xi = SparseMatrixCSC{Float64, Int64}(xi[contmod.isgrid, contmod.isgrid])
+end
