@@ -1,5 +1,6 @@
 notebooks/.ipynb_checkpoints*
 scripts/.ipynb_checkpoints*
+docs/.ipynb_checkpoints*
 numerics*
 notebooks/tmp.gif
 *.DS_Store

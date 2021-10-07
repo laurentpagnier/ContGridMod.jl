@@ -15,3 +15,5 @@ stable:
 dyn:
 	cd scripts;\
 	julia -t $$(nproc) compute_dynamics.jl
+download:
+	wget 
