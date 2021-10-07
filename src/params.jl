@@ -207,7 +207,7 @@ end
 
 
 function heat_diff(
-    mesh::mesh,
+    mesh::Mesh,
     q::Array{Float64,1};
     Niter::Int64 = 5000,
     tau::Float64 = 0.001,

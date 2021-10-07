@@ -1,5 +1,7 @@
 module ContGridMod
 
+using SparseArrays
+
 mutable struct DiscModel
     mg::Array{Float64, 1}
     dg::Array{Float64, 1}
