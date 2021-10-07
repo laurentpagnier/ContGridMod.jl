@@ -1,49 +1,11 @@
+export get_params
+
 using HDF5
 using Plots
 using SparseArrays
 
-include("mesh.jl")
-
-mutable struct DiscModel
-    mg::Array{Float64, 1}
-    dg::Array{Float64, 1}
-    idgen::Array{Int64, 1}
-    coord::Array{Float64, 2}
-    dl::Array{Float64, 1}
-    idb::Array{Int64, 2}
-    bline::Array{Float64, 1}
-    load::Array{Float64, 1}
-    th::Array{Float64, 1}
-    gen::Array{Float64, 1}
-    max_gen::Array{Float64, 1}
-    Nbus::Int64
-end
-
-mutable struct ContModel
-    Nx::Int64
-    Ny::Int64
-    coord::Array{Float64, 2}
-    isinside::BitVector
-    isborder::BitVector
-    isgrid::BitVector
-    yrange::Array{Float64, 1}
-    xrange::Array{Float64, 1}
-    n::Array{Float64, 2}
-    dx::Float64
-    minv::Array{Float64, 1}
-    gamma::Array{Float64, 1}
-    p::Array{Float64, 1}
-    xi::SparseMatrixCSC{Float64, Int64}
-    bx::Array{Float64, 1}
-    by::Array{Float64, 1}
-    m::Array{Float64, 1}
-    d::Array{Float64, 1}
-    th::Array{Float64, 1}
-end
-
-
 function get_params(
-    grid::Grid,
+    mesh::Mesh,
     scale_factor::Float64,
     dataname::String;
     savename::String = "",
@@ -60,10 +22,10 @@ function get_params(
     
     # load the discrete model
     dm = load_discrete_model(dataname, scale_factor)
-    grid_coord = grid.coord[grid.isgrid,:]
-    idgrid = findall(grid.isgrid)
-    idin = findall(grid.isinside)
-    N = size(grid.coord, 1)
+    mesh_coord = mesh.coord[mesh.isgrid,:]
+    idmesh = findall(mesh.isgrid)
+    idin = findall(mesh.isinside)
+    N = size(mesh.coord, 1)
     m = zeros(N)
     d = zeros(N)
     pl = zeros(N)
@@ -73,19 +35,19 @@ function get_params(
     @time begin
     Threads.@threads for g in 1:length(dm.idgen)
         if(dm.gen[g] > 0.0)
-            k = argmin((grid_coord[:, 1] .- dm.coord[dm.idgen[g],1]).^2 +
-                (grid_coord[:, 2] .- dm.coord[dm.idgen[g],2]).^2)
-            m[idgrid[k]] += dm.mg[g]
-            d[idgrid[k]] += dm.dg[g]
-            pg[idgrid[k]] += dm.gen[g]
+            k = argmin((mesh_coord[:, 1] .- dm.coord[dm.idgen[g],1]).^2 +
+                (mesh_coord[:, 2] .- dm.coord[dm.idgen[g],2]).^2)
+            m[idmesh[k]] += dm.mg[g]
+            d[idmesh[k]] += dm.dg[g]
+            pg[idmesh[k]] += dm.gen[g]
         end
     end
     
     Threads.@threads for l in 1:length(dm.dl)
-        k = argmin((grid_coord[:, 1] .- dm.coord[l,1]).^2 +
-            (grid_coord[:, 2] .- dm.coord[l,2]).^2)
-        d[idgrid[k]] += dm.dl[l]
-        pl[idgrid[k]] += dm.load[l]
+        k = argmin((mesh_coord[:, 1] .- dm.coord[l,1]).^2 +
+            (mesh_coord[:, 2] .- dm.coord[l,2]).^2)
+        d[idmesh[k]] += dm.dl[l]
+        pl[idmesh[k]] += dm.load[l]
     end
 
     bm = sum(dm.bline) / length(dm.bline)
@@ -99,8 +61,8 @@ function get_params(
         ds2 = (dy_l^2 + dx_l^2)
         phi = atan(dy_l, dx_l)
         if(dx_l != 0 && dy_l != 0) # if not a transformer
-            y = grid_coord[:, 1] # it's "less precise" but way simpler to implement 
-            x = grid_coord[:, 2] # using node locations instead of centers of lines, 
+            y = mesh_coord[:, 1] # it's "less precise" but way simpler to implement 
+            x = mesh_coord[:, 2] # using node locations instead of centers of lines, 
             beta = (dx_l .* (y1 .- y) + dy_l .* (x .- x1)) ./ ds2
             alpha = (dx_l .* (x .- x1) + dy_l .* (y .- y1)) ./ ds2
             in_seg = (0 .< alpha) .& (alpha .< 1)
@@ -108,28 +70,28 @@ function get_params(
                 .!in_seg .* min.(sqrt.((x .- x1).^2 + (y .- y1).^2), # if close to the ends
                 sqrt.((x .- x2).^2 + (y .- y2).^2))
             if(dm.bline[l] < 2*bm) # if b is too large discard it
-                bx[idgrid[dist .< dmax]] .+= dm.bline[l] * abs(cos(phi)) * dx^2 * patch
-                by[idgrid[dist .< dmax]] .+= dm.bline[l] * abs(sin(phi)) * dx^2 * patch
+                bx[idmesh[dist .< dmax]] .+= dm.bline[l] * abs(cos(phi)) * dx^2 * patch
+                by[idmesh[dist .< dmax]] .+= dm.bline[l] * abs(sin(phi)) * dx^2 * patch
             end
         end
     end
     end
     
-    bx[grid.isgrid] .= max.(bx[grid.isgrid], bmin)
-    by[grid.isgrid] .= max.(by[grid.isgrid], bmin)
+    bx[mesh.isgrid] .= max.(bx[mesh.isgrid], bmin)
+    by[mesh.isgrid] .= max.(by[mesh.isgrid], bmin)
     
     @time begin
-        m = heat_diff(grid, m, Niter = Niter, tau = tau)
-        d = heat_diff(grid, d, Niter = Niter, tau = tau)
-        pl = heat_diff(grid, pl, Niter = Niter, tau = tau)
-        pg = heat_diff(grid, pg, Niter = Niter, tau = tau)
-        bx = heat_diff(grid, bx, Niter = Niter, tau = tau)
-        by = heat_diff(grid, by, Niter = Niter, tau = tau)
+        m = heat_diff(mesh, m, Niter = Niter, tau = tau)
+        d = heat_diff(mesh, d, Niter = Niter, tau = tau)
+        pl = heat_diff(mesh, pl, Niter = Niter, tau = tau)
+        pg = heat_diff(mesh, pg, Niter = Niter, tau = tau)
+        bx = heat_diff(mesh, bx, Niter = Niter, tau = tau)
+        by = heat_diff(mesh, by, Niter = Niter, tau = tau)
     end
 
     # asign minimal values to the quantities
-    m[grid.isgrid] .= max.(m[grid.isgrid], min_factor * sum(m) / sum(grid.isgrid))
-    d[grid.isgrid] .= max.(d[grid.isgrid], min_factor * sum(d) / sum(grid.isgrid))
+    m[mesh.isgrid] .= max.(m[mesh.isgrid], min_factor * sum(m) / sum(mesh.isgrid))
+    d[mesh.isgrid] .= max.(d[mesh.isgrid], min_factor * sum(d) / sum(mesh.isgrid))
     #bx[isgrid] .= max.(bx[isgrid], min_factor * sum(bx) / sum(isgrid))
     #by[isgrid] .= max.(by[isgrid], min_factor * sum(by) / sum(isgrid))
     
@@ -159,20 +121,20 @@ function get_params(
     id2 = Array{Int64,1}()
     v = Array{Float64,1}()
     
-    for k in 1:grid.Nx*grid.Ny
-        if(grid.isinside[k])
+    for k in 1:mesh.Nx*mesh.Ny
+        if(mesh.isinside[k])
             append!(id1, k)
             append!(id2, k)
             append!(v, - (bx[k] +
-                bx[k-grid.Ny] +
+                bx[k-mesh.Ny] +
                 by[k] +
                 by[k-1])
                 )
             append!(id1, k)
-            append!(id2, k-grid.Ny)
-            append!(v, bx[k-grid.Ny])
+            append!(id2, k-mesh.Ny)
+            append!(v, bx[k-mesh.Ny])
             append!(id1, k)
-            append!(id2, k+grid.Ny)
+            append!(id2, k+mesh.Ny)
             append!(v, bx[k])
             append!(id1, k)
             append!(id2, k-1)
@@ -183,10 +145,10 @@ function get_params(
         end
     end
     
-    for id in 1:size(grid.n, 1)
-        k = (Int64(grid.n[id, 2]) - 1) * grid.Ny + Int64(grid.n[id, 1])
-        ny = grid.n[id, 3]
-        nx = grid.n[id, 4] 
+    for id in 1:size(mesh.n, 1)
+        k = (Int64(mesh.n[id, 2]) - 1) * mesh.Ny + Int64(mesh.n[id, 1])
+        ny = mesh.n[id, 3]
+        nx = mesh.n[id, 4] 
         etamx = 1 - nx/2 - nx^2/2
         etapx = 1 + nx/2 - nx^2/2
         etamy = 1 - ny/2 - ny^2/2
@@ -194,14 +156,14 @@ function get_params(
         append!(id1, k)
         append!(id2, k)
         append!(v, - (etamx * bx[k] +
-            etapx * bx[k-grid.Ny] +
+            etapx * bx[k-mesh.Ny] +
             etamy * by[k] +
             etapy * by[k-1]))
         append!(id1, k)
-        append!(id2, k-grid.Ny)
-        append!(v, etapx * bx[k-grid.Ny])
+        append!(id2, k-mesh.Ny)
+        append!(v, etapx * bx[k-mesh.Ny])
         append!(id1, k)
-        append!(id2, k+grid.Ny)
+        append!(id2, k+mesh.Ny)
         append!(v, etamx * bx[k])
         append!(id1, k)
         append!(id2, k-1)
@@ -211,26 +173,26 @@ function get_params(
         append!(v, etamy * by[k])
     end
     
-    xi = sparse(id1, id2, v, grid.Ny * grid.Nx, grid.Ny * grid.Nx)
+    xi = sparse(id1, id2, v, mesh.Ny * mesh.Nx, mesh.Ny * mesh.Nx)
     minv = m.^(-1)
-    minv = minv[grid.isgrid]
-    gamma = d[grid.isgrid] .* minv
-    xi = SparseMatrixCSC{Float64, Int64}(xi[grid.isgrid, grid.isgrid])
+    minv = minv[mesh.isgrid]
+    gamma = d[mesh.isgrid] .* minv
+    xi = SparseMatrixCSC{Float64, Int64}(xi[mesh.isgrid, mesh.isgrid])
     
     p = pg - pl 
-    p = p[grid.isgrid] .- sum(p[grid.isgrid]) / sum(grid.isgrid)
+    p = p[mesh.isgrid] .- sum(p[mesh.isgrid]) / sum(mesh.isgrid)
     
     cm = ContModel(
-        grid.Nx,
-        grid.Ny,
-        grid.coord,
-        grid.isinside,
-        grid.isborder,
-        grid.isgrid,
-        grid.yrange,
-        grid.xrange,
-        grid.n,
-        grid.dx,
+        mesh.Nx,
+        mesh.Ny,
+        mesh.coord,
+        mesh.isinside,
+        mesh.isborder,
+        mesh.isgrid,
+        mesh.yrange,
+        mesh.xrange,
+        mesh.n,
+        mesh.dx,
         minv,
         gamma,
         p,
@@ -245,7 +207,7 @@ end
 
 
 function heat_diff(
-    grid::Grid,
+    mesh::mesh,
     q::Array{Float64,1};
     Niter::Int64 = 5000,
     tau::Float64 = 0.001,
@@ -256,15 +218,15 @@ function heat_diff(
     id2 = Array{Int64,1}()
     v = Array{Float64,1}()
     for k in 1:length(q)
-        if(grid.isinside[k])
+        if(mesh.isinside[k])
             append!(id1, k)
             append!(id2, k)
             append!(v, -4.0)
             append!(id1, k)
-            append!(id2, k-grid.Ny)
+            append!(id2, k-mesh.Ny)
             append!(v, 1.0)
             append!(id1, k)
-            append!(id2, k+grid.Ny)
+            append!(id2, k+mesh.Ny)
             append!(v, 1.0)
             append!(id1, k)
             append!(id2, k-1)
@@ -275,10 +237,10 @@ function heat_diff(
         end
     end
     
-    for id in 1:size(grid.n, 1)
-        k = (Int64(grid.n[id, 2]) - 1) * grid.Ny + Int64(grid.n[id, 1])
-        ny = grid.n[id, 3]
-        nx = grid.n[id, 4] 
+    for id in 1:size(mesh.n, 1)
+        k = (Int64(mesh.n[id, 2]) - 1) * mesh.Ny + Int64(mesh.n[id, 1])
+        ny = mesh.n[id, 3]
+        nx = mesh.n[id, 4] 
         etamx = 1 - nx/2-nx^2/2
         etapx = 1 + nx/2-nx^2/2
         etamy = 1 - ny/2-ny^2/2
@@ -290,10 +252,10 @@ function heat_diff(
             etamy +
             etapy))
         append!(id1, k)
-        append!(id2, k-grid.Ny)
+        append!(id2, k-mesh.Ny)
         append!(v, etapx)
         append!(id1, k)
-        append!(id2, k+grid.Ny)
+        append!(id2, k+mesh.Ny)
         append!(v, etamx)
         append!(id1, k)
         append!(id2, k-1)
@@ -303,7 +265,7 @@ function heat_diff(
         append!(v, etamy)
     end
     
-    N = grid.Ny * grid.Nx
+    N = mesh.Ny * mesh.Nx
     xi = sparse(id1, id2, v, N, N)
     I = sparse(1:N, 1:N, ones(N))
     A = 2.0 .* I - tau .* xi / dx^2

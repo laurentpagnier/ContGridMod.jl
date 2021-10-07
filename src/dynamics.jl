@@ -1,3 +1,5 @@
+export perform_dyn_sim_forward
+
 using SparseArrays
 using LinearAlgebra
 using IterativeSolvers

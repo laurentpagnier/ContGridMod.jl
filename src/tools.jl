@@ -1,3 +1,5 @@
+export back_to_2d, alberts_projection, import_json_numerics
+
 using JSON
 
 function inPolygon(p::Array{Float64,2}, poly::Array{Float64,2})

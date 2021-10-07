@@ -1,3 +1,5 @@
+export compute_stable_sol!
+
 function compute_stable_sol!(
     contmod = ContModel;
     interval::Int64 = 1000,
