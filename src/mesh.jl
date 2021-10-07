@@ -1,4 +1,6 @@
-function get_grid(
+export get_mesh
+
+function get_mesh(
     border::Array{Float64, 2},
     dx::Float64
 )

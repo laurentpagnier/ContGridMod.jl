@@ -149,10 +149,10 @@ function get_params(
         k = (Int64(mesh.n[id, 2]) - 1) * mesh.Ny + Int64(mesh.n[id, 1])
         ny = mesh.n[id, 3]
         nx = mesh.n[id, 4] 
-        etamx = 1 - nx/2 - nx^2/2
-        etapx = 1 + nx/2 - nx^2/2
-        etamy = 1 - ny/2 - ny^2/2
-        etapy = 1 + ny/2 - ny^2/2
+        etamx = 1.0 - nx / 2.0 - nx^2 / 2.0
+        etapx = 1.0 + nx / 2.0 - nx^2 / 2.0
+        etamy = 1.0 - ny / 2.0- ny^2 / 2.0
+        etapy = 1.0 + ny / 2.0 - ny^2 / 2.0
         append!(id1, k)
         append!(id2, k)
         append!(v, - (etamx * bx[k] +
@@ -241,10 +241,10 @@ function heat_diff(
         k = (Int64(mesh.n[id, 2]) - 1) * mesh.Ny + Int64(mesh.n[id, 1])
         ny = mesh.n[id, 3]
         nx = mesh.n[id, 4] 
-        etamx = 1 - nx/2-nx^2/2
-        etapx = 1 + nx/2-nx^2/2
-        etamy = 1 - ny/2-ny^2/2
-        etapy = 1 + ny/2-ny^2/2
+        etamx = 1.0 - nx / 2.0 - nx^2 / 2.0
+        etapx = 1.0 + nx / 2.0 - nx^2 / 2.0
+        etamy = 1.0 - ny / 2.0- ny^2 / 2.0
+        etapy = 1.0 + ny / 2.0 - ny^2 / 2.0
         append!(id1, k)
         append!(id2, k)
         append!(v, - (etamx +
@@ -342,10 +342,10 @@ function update_params!(
         k = (Int64(contmod.n[id, 2]) - 1) * contmod.Ny + Int64(contmod.n[id, 1])
         ny = contmod.n[id, 3]
         nx = contmod.n[id, 4] 
-        etamx = 1 - nx/2 - nx^2/2
-        etapx = 1 + nx/2 - nx^2/2
-        etamy = 1 - ny/2 - ny^2/2
-        etapy = 1 + ny/2 - ny^2/2
+        etamx = 1.0 - nx / 2.0 - nx^2 / 2.0
+        etapx = 1.0 + nx / 2.0 - nx^2 / 2.0
+        etamy = 1.0 - ny / 2.0- ny^2 / 2.0
+        etapy = 1.0 + ny / 2.0 - ny^2 / 2.0
         append!(id1, k)
         append!(id2, k)
         append!(v, - (etamx * contmod.bx[k] +
