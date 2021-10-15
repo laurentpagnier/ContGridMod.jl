@@ -167,7 +167,7 @@ function find_gen(
     scale_factor::Float64 = 1.0
 )
     #find the the nearest generator that can "withstand" a dP fault
-    coord = alberts_projection(gps_coord[:,[2;1]] ./ (180 / pi) )
+    coord = albers_projection(gps_coord[:,[2;1]] ./ (180 / pi) )
     coord = coord[:,[2,1]] / scale_factor
     idprod = findall((dm.gen .> 0.0))
     idavail = findall(dm.max_gen[idprod] .> dP) # find id large gens in the prod list
@@ -192,7 +192,7 @@ function find_node(
     gps_coord::Array{Float64, 2};
     scale_factor::Float64 = 1.0
 )
-    coord = alberts_projection(gps_coord[:,[2;1]] ./ (180 / pi) )
+    coord = albers_projection(gps_coord[:,[2;1]] ./ (180 / pi) )
     coord = coord[:,[2,1]] / scale_factor
 
     id = Int64.(zeros(size(coord,1))) # index in the full gen list

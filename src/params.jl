@@ -285,7 +285,7 @@ function load_discrete_model(
     scaling_factor::Float64
 )
     data = h5read(dataname, "/")
-    coord = alberts_projection( data["bus_coord"] ./ (180 / pi) )
+    coord = albers_projection( data["bus_coord"] ./ (180 / pi) )
     coord = coord[:,[2,1]] / scaling_factor
     dm = DiscModel(
         vec(data["gen_inertia"]),

@@ -1,4 +1,4 @@
-export back_to_2d, alberts_projection, import_json_numerics
+export back_to_2d, albers_projection, import_json_numerics, import_border
 
 using JSON
 
@@ -27,7 +27,7 @@ function inPolygon(p::Array{Float64,2}, poly::Array{Float64,2})
 end
 
 
-function alberts_projection(
+function albers_projection(
     coord::Array{Float64,2}; # as lon lat
     lon0::Float64 = 13.37616 / 180 * pi,
     lat0::Float64 = 46.94653 / 180 * pi,
@@ -63,7 +63,7 @@ function import_border(
         b = vcat(b, reshape(b[1, :], 1, 2))
     end
 
-    b = alberts_projection(b)
+    b = albers_projection(b)
     scale_factor = max(
         maximum(b[:,1]) - minimum(b[:,1]),
         maximum(b[:,2]) - minimum(b[:,2])
