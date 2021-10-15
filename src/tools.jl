@@ -1,4 +1,4 @@
-export back_to_2d, albers_projection, import_json_numerics, import_border
+export back_to_2d, albers_projection, import_json_numerics, import_border, get_discrete_values
 
 using JSON
 

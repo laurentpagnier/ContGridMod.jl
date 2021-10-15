@@ -1,4 +1,4 @@
-export get_params
+export get_params, update_params!, load_discrete_model
 
 using HDF5
 using Plots
