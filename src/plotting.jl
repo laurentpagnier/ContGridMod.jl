@@ -1,5 +1,7 @@
 using Plots
 
+export hm_plot, time_plot, hm_movie, disc_plot, cmp_plot
+
 function hm_plot(
     contmodel::ContModel,
     values::Array{Float64, 1}; # timeseries from the continous model

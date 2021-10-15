@@ -11,7 +11,7 @@ Please cite our work as
 Being in the ContGridMod folder:
 ```julia
 using Pkg
-Pkg.add(".")
+Pkg.add(path=".")
 ```
 
 # Adding a dependency
@@ -19,7 +19,7 @@ Pkg.add(".")
 Being in the ContGridMod folder:
 ```julia
 using Pkg
-Pkg.active(".")
+Pkg.activate(".")
 Pkg.add(<some_package>)
 ```
 

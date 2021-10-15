@@ -1,3 +1,5 @@
+export add_local_disturbance!
+
 function add_local_disturbance!(
     contmod::ContModel,
     location::Array{Float64,1},

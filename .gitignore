@@ -8,3 +8,4 @@ notebooks/tmp.gif
 *.log
 *.aux
 *.bib
+.history/

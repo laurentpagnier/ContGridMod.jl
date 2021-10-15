@@ -1,4 +1,4 @@
-export perform_dyn_sim_forward
+export perform_dyn_sim
 
 using SparseArrays
 using LinearAlgebra

@@ -4,6 +4,11 @@ using IterativeSolvers
 include("params.jl")
 include("mesh.jl")
 
+export find_gen, find_node, find_node2, radau5, NRsolver
+#=
+TODO: Write single solver for the discrete model, such that radau5 and NRSolver don't need to be exposed
+=#
+
 function radau5(
     og::Array{Float64, 1},
     thg::Array{Float64, 1},
