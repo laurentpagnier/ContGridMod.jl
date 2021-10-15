@@ -70,8 +70,8 @@ function get_params(
                 .!in_seg .* min.(sqrt.((x .- x1).^2 + (y .- y1).^2), # if close to the ends
                 sqrt.((x .- x2).^2 + (y .- y2).^2))
             if(dm.bline[l] < 2*bm) # if b is too large discard it
-                bx[idmesh[dist .< dmax]] .+= dm.bline[l] * abs(cos(phi)) * dx^2 * patch
-                by[idmesh[dist .< dmax]] .+= dm.bline[l] * abs(sin(phi)) * dx^2 * patch
+                bx[idmesh[dist .< dmax]] .+= dm.bline[l] * abs(cos(phi)) * mesh.dx^2 * patch
+                by[idmesh[dist .< dmax]] .+= dm.bline[l] * abs(sin(phi)) * mesh.dx^2 * patch
             end
         end
     end
@@ -97,10 +97,10 @@ function get_params(
     
     # ensure that the integrals of the different quantities over
     # the medium is equivalent to their sum over the discrete model
-    m = (sum(dm.mg) / sum(m) / dx^2) .* m 
-    d = ((sum(dm.dg) + sum(dm.dl)) / sum(d) / dx^2) .* d
-    pl = (sum(dm.load) / sum(pl) / dx^2) .* pl
-    pg = (sum(dm.gen) / sum(pg) / dx^2) .* pg
+    m = (sum(dm.mg) / sum(m) /mesh.dx^2) .* m 
+    d = ((sum(dm.dg) + sum(dm.dl)) / sum(d) / mesh.dx^2) .* d
+    pl = (sum(dm.load) / sum(pl) / mesh.dx^2) .* pl
+    pg = (sum(dm.gen) / sum(pg) / mesh.dx^2) .* pg
     
     # save the quantities
     #fid = h5open(savename, "w")
@@ -268,8 +268,8 @@ function heat_diff(
     N = mesh.Ny * mesh.Nx
     xi = sparse(id1, id2, v, N, N)
     I = sparse(1:N, 1:N, ones(N))
-    A = 2.0 .* I - tau .* xi / dx^2
-    B = 2.0 .* I + tau .* xi / dx^2
+    A = 2.0 .* I - tau .* xi / mesh.dx^2
+    B = 2.0 .* I + tau .* xi / mesh.dx^2
     for t in 1:Niter
         q = A \ (B * q) #way slower when dx -> 0
         #x = A \ x
