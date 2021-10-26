@@ -1,5 +1,5 @@
 notebooks/.ipynb_checkpoints*
-scripts/.ipynb_checkpoints*
+src/.ipynb_checkpoints*
 docs/.ipynb_checkpoints*
 numerics*
 notebooks/tmp.gif
