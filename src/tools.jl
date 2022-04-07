@@ -1,5 +1,6 @@
 export back_to_2d, albers_projection, import_json_numerics, import_border, get_discrete_values
 
+using ContGridMod
 using JSON
 
 function inPolygon(p::Array{Float64,2}, poly::Array{Float64,2})
@@ -24,6 +25,15 @@ function inPolygon(p::Array{Float64,2}, poly::Array{Float64,2})
         end
     end
     return isin
+end
+
+
+function copy_model(
+    cm::ContModel
+)
+    return ContModel(cm.Nx, cm.Ny, cm.coord, cm.isinside, cm.isborder,
+     cm.isinside, cm.yrange, cm.xrange, cm.n, cm.dx, cm.min, cm.gamma,
+     cm.p, cm.xi, cm.bx, cm.by, cm.m, cm.d, cm.th)
 end
 
 
