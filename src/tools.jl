@@ -1,4 +1,4 @@
-export back_to_2d, albers_projection, import_json_numerics, import_border, get_discrete_values
+export back_to_2d, albers_projection, import_json_numerics, import_border, get_discrete_values, copy_model
 
 using ContGridMod
 using JSON
@@ -31,9 +31,11 @@ end
 function copy_model(
     cm::ContModel
 )
-    return ContModel(cm.Nx, cm.Ny, cm.coord, cm.isinside, cm.isborder,
-     cm.isinside, cm.yrange, cm.xrange, cm.n, cm.dx, cm.min, cm.gamma,
-     cm.p, cm.xi, cm.bx, cm.by, cm.m, cm.d, cm.th)
+    return ContModel(copy(cm.Nx), copy(cm.Ny), copy(cm.coord),
+        copy(cm.isinside), copy(cm.isborder), copy(cm.isgrid),
+        copy(cm.yrange), copy(cm.xrange), copy(cm.n), copy(cm.dx),
+        copy(cm.minv), copy(cm.gamma), copy(cm.p), copy(cm.xi),
+        copy(cm.bx), copy(cm.by), copy(cm.m), copy(cm.d), copy(cm.th))
 end
 
 
@@ -82,17 +84,47 @@ function import_border(
 end
 
 
+function get_discrete_id(
+    grid_coord::Array{Float64,2},
+    disc_coord::Array{Float64,2},
+)
+    ids = Int64.(zeros(size(disc_coord,1)))
+    for i in 1:size(ids,1)
+        ids[i] = argmin((grid_coord[:,1] .- disc_coord[i,1]).^2 +
+        (grid_coord[:,2] .- disc_coord[i,2]).^2)
+    end
+
+    return ids
+end
+
+
+function get_discrete_values(
+    ids::Vector{Int64},
+    v::Vector{Float64}
+)
+    return [v[ids[i]] for i = 1:length(ids)]
+end
+
+
 function get_discrete_values(
     grid_coord::Array{Float64,2},
     disc_coord::Array{Float64,2},
     v::Array{Float64,1}
 )
     disc_v = zeros(size(disc_coord,1))
+    #map((i) -> )
     for i in 1:size(disc_v,1)
         id = argmin((grid_coord[:,1] .- disc_coord[i,1]).^2 +
         (grid_coord[:,2] .- disc_coord[i,2]).^2)
-        disc_v[i] = v[id]
+        disc_v[i] = disc_v[i] + v[id] # changed to avoid "Mutating arrays is not supported"
     end
+    #=
+    for i in 1:size(disc_v,1)
+        id = argmin((grid_coord[:,1] .- disc_coord[i,1]).^2 +
+        (grid_coord[:,2] .- disc_coord[i,2]).^2)
+        disc_v[i] = disc_v[i] + v[id] # changed to avoid "Mutating arrays is not supported"
+    end
+    =#
     return disc_v
 end
 

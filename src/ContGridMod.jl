@@ -17,39 +17,28 @@ mutable struct DiscModel
     Nbus::Int64
 end
 
-mutable struct ContModel
-    Nx::Int64
-    Ny::Int64
-    coord::Array{Float64, 2}
-    isinside::BitVector
-    isborder::BitVector
-    isgrid::BitVector
-    yrange::Array{Float64, 1}
-    xrange::Array{Float64, 1}
-    n::Array{Float64, 2}
-    dx::Float64
-    minv::Array{Float64, 1}
-    gamma::Array{Float64, 1}
-    p::Array{Float64, 1}
-    xi::SparseMatrixCSC{Float64, Int64}
-    bx::Array{Float64, 1}
-    by::Array{Float64, 1}
-    m::Array{Float64, 1}
-    d::Array{Float64, 1}
-    th::Array{Float64, 1}
-end
-
 mutable struct Mesh
     Nx::Int64
     Ny::Int64
-    coord::Array{Float64, 2}
-    isinside::BitVector
-    isborder::BitVector
+    coord::Matrix{Float64}
+    line_coord::Matrix{Float64}
+    inc_mat::Matrix{Int64}
     isgrid::BitVector
-    yrange::Array{Float64, 1}
-    xrange::Array{Float64, 1}
-    n::Array{Float64, 2}
+    yrange::Vector{Float64}
+    xrange::Vector{Float64}
     dx::Float64
+end
+
+mutable struct ContModel
+    mesh::Mesh
+    minv::Vector{Float64}
+    gamma::Vector{Float64}
+    p::Vector{Float64}
+    xi::SparseMatrixCSC{Float64, Int64}
+    b::Vector{Float64}
+    m::Vector{Float64}
+    d::Vector{Float64}
+    th::Vector{Float64}
 end
 
 include("disc_solvers.jl");

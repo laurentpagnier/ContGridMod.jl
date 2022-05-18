@@ -2,6 +2,39 @@ using Plots
 
 export hm_plot, time_plot, hm_movie, disc_plot, cmp_plot
 
+
+function hm_plot(
+    contmodel::ContModel,
+    field::String;
+    borders::Array{Array{Float64,2},1} = Array{Float64,2}[],
+    clim::Tuple{Float64, Float64} = (0.0,0.0),
+    c = :inferno,
+    cb_title::String = ""
+)
+    global cm = contmodel
+    eval(Meta.parse("temp = cm.$(field)"))
+    value = zeros(contmodel.mesh.Ny, contmodel.mesh.Nx)
+    value[contmodel.mesh.isgrid] = temp
+    value[.!contmodel.mesh.isgrid] .= NaN
+    if(clim == (0.0, 0.0))
+        Plots.heatmap(contmodel.mesh.xrange, contmodel.mesh.yrange,
+            reshape(value, contmodel.mesh.Ny, contmodel.mesh.Nx),
+            #c = c, colorbar_title=cb_title)
+            c = c, colorbar=false)
+    else
+        Plots.heatmap(contmodel.mesh.xrange, contmodel.mesh.yrange,
+        reshape(value, contmodel.mesh.Ny, contmodel.mesh.Nx),
+        #c = c, clim = clim, colorbar_title=cb_title)
+        c = c, clim = clim, colorbar=false)
+    end
+    for k in 1:length(borders)
+        p2 = plot!(borders[k][:, 1], borders[k][:, 2], color=:black,linewidth=3.0)
+    end
+    plot!(legend=false, grid=false, showaxis=:hide, xaxis=nothing,
+    yaxis=nothing, aspect_ratio=:equal)
+end
+
+#=
 function hm_plot(
     contmodel::ContModel,
     values::Array{Float64, 1}; # timeseries from the continous model
@@ -29,6 +62,7 @@ function hm_plot(
     plot!(legend=false, grid=false, showaxis=:hide, xaxis=nothing,
     yaxis=nothing, aspect_ratio=:equal)
 end
+=#
 
 
 function time_plot(

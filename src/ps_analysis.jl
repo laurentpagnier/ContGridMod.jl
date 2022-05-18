@@ -3,10 +3,12 @@ function set_ref_phase!(
     coord_ref::Array{Float64, 1};
     th_ref::Float64 = 0.0
 )
-    # set the phases according to some reference phase at at a given location 
-    id = argmin((contmod.coord[contmod.isgrid, 1] .- coord_ref[1]).^2 +
-        (contmod.coord[contmod.isgrid, 2] .- coord_ref[2]).^2)
-    contmod.th[contmod.isgrid] .= contmod.th[contmod.isgrid] .- contmod.th[id] .+ th_ref
+    # set the phases according to some reference phase at at a given location
+    id = argmin((contmod.mesh.coord[:, 1] .- coord_ref[1]).^2 +
+        (contmod.mesh.coord[:, 2] .- coord_ref[2]).^2)
+    n = length(contmod.th)
+    M = sparse([1:n; 1:n], [1:n; id*ones(n)], [ones(n); -ones(n)])
+    contmod.th = M * contmod.th + th_ref * ones(n)
 end
 
 
