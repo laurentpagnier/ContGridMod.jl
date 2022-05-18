@@ -2,7 +2,7 @@ all:
 	@echo select an option:
 	@echo '"make grid" to compute grid parameters'
 	@echo '"make stable" to compute stable solutions'
-num:
+install:
 	@test -e numerics || mkdir numerics
 clear:
 	rm numerics/*
@@ -15,3 +15,5 @@ stable:
 dyn:
 	cd scripts;\
 	julia -t $$(nproc) compute_dynamics.jl
+download:
+	wget 

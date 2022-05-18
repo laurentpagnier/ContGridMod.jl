@@ -1,3 +1,102 @@
+using LinearAlgebra
+using SparseArrays
+using IterativeSolvers
+
+export find_gen, find_node, find_node2, radau5, NRsolver, disc_dynamics
+#=
+TODO: Discuss how the disc_dynamics should be treated, should we reorder it or expect the data to be in order?
+=#
+
+function disc_dynamics(
+        dm::DiscModel,
+        dP::Float64;
+        faultid::Int64 = 0,
+        coords::Array{Float64, 2} = [NaN NaN],
+        interval::Int64 = 100,
+        Ndt::Int64 = 25000,
+        dt::Float64 = 5e-3,
+        scale_factor::Float64 = 0.0
+)
+    #=
+    This function allows to either specify the GPS coordinates of where the fault occurs or the ID of the generator.
+    If both are given the ID will be used. If the GPS coordinates are given, the scale_factor must be given.
+    =#
+    if (coords == [NaN NaN] && faultid == 0)
+        throw(ErrorException("Either the coordinates or the ID of the faulty generator need to be specified."))
+    end
+    if (scale_factor == 0.0 && faultid == 0)
+        throw(ErrorException("If the coordinates are given, scale_factor must be specified."))
+    end
+    if (faultid == 0)
+        ~, tmp = find_gen(dm, coords, dP, scale_factor=scale_factor)
+        faultid = tmp[1]
+    end
+    # Data preperation
+    Nbus = length(dm.load)
+    is_producing = dm.gen .> 0
+    id_gen = dm.idgen[is_producing]
+    id_load = setdiff(1:Nbus, id_gen)
+    ng = length(id_gen)
+    nl = length(id_load)
+    g = zeros(Nbus)
+    g[dm.idgen] .= dm.gen
+    p = -dm.load + g
+    p .-= sum(p) / Nbus
+    edges = Int64.(zeros(size(dm.idb)))
+    line_start = dm.idb[:, 1]
+    line_end = dm.idb[:, 2]
+    # bus reordering: generator buses first 
+    for i in 1:ng
+        edges[line_start .== id_gen[i], 1] .= i
+        edges[line_end .== id_gen[i], 2] .= i
+    end
+    for i in 1:nl
+        edges[line_start .== id_load[i], 1] .= i + ng
+        edges[line_end .== id_load[i], 2] .= i + ng
+    end
+    nline = size(dm.idb,1)
+    id = edges
+    inc = sparse([id[:,1]; id[:,2]], [1:nline; 1:nline], [-ones(nline);ones(nline)])
+
+    # set initial conditions
+    mg = dm.mg[is_producing]
+    dg = dm.dg[is_producing]
+    dg += dm.dl[id_gen]
+    dl = dm.dl[id_load]
+    pg = p[id_gen]
+    pl = p[id_load]
+    p = [pg; pl]
+    # get the stable solution
+    b2 = - im .* dm.bline
+    Ybus = conj(inc * sparse(1:nline, 1:nline, b2) * inc')
+    q = zeros(Nbus)
+    V = ones(Nbus)
+    theta = zeros(Nbus)
+
+    V, theta, iter = NRsolver(Ybus, V, theta, -p, q, Array{Int64,1}([]), 1, tol = 1E-30, maxiter = 10)
+    thg = theta[1:ng]
+    thl = theta[ng+1:end]
+    og = zeros(ng);
+    ts = zeros(Int64.(floor(Ndt / interval))+1)
+    omegas = zeros(ng, Int64.(floor(Ndt / interval))+1)
+    k = 1
+    dp = zeros(ng)
+    dp[faultid] = -9.0
+    for i in 1:Ndt
+        y = radau5(og, thg, thl, mg, dg, dl, pg+dp, pl, inc, dm.bline, dt, maxiter = 14, tol = 1E-6)
+        if(mod(i, interval) == 0)
+            println(i, " / ", Ndt, " (", floor(100*i/Ndt), "%)")
+                omegas[:, k+1] = y[1 : ng]
+                ts[k+1] = i*dt
+                k += 1
+            end
+        og = y[1:ng]
+        thg = y[ng + 1 : 2 * ng]
+        thl = y[2 * ng + 1 : end]
+    end
+    return ts, omegas
+end
+
 function radau5(
     og::Array{Float64, 1},
     thg::Array{Float64, 1},
@@ -98,9 +197,9 @@ function radau5(
     if(iter == maxiter)
         println("Max iteration reached, error: ", error)
     end
-    #return Y[(ns - 1) * nvar + 1 : end]
     return real.(Y[(ns - 1) * nvar + 1 : end]) 
 end
+
 
 function NRsolver(
     Ybus::SparseMatrixCSC{ComplexF64, Int64},
@@ -140,11 +239,67 @@ function NRsolver(
             V[idpq] -= x[n:end]
         end
         error = maximum(abs.(dPQ))
-        iter += 1 
+        iter += 1
     end
 	if(iter == maxiter)
         println("Max iteration reached, error: ", error)
     end
     return V, theta, iter 
+end
+
+
+function find_gen(
+    dm::DiscModel,
+    gps_coord::Array{Float64, 2},
+    dP::Float64;
+    scale_factor::Float64 = 1.0
+)
+    #find the the nearest generator that can "withstand" a dP fault
+    coord = albers_projection(gps_coord[:,[2;1]] ./ (180 / pi) )
+    coord = coord[:,[2,1]] / scale_factor
+    idprod = findall((dm.gen .> 0.0))
+    idavail = findall(dm.max_gen[idprod] .> dP) # find id large gens in the prod list
+    # println(size(idprod))
+    # println(idavail)
+    #idprod = findall((dm.gen .> 0.0))
+    id = Int64.(zeros(size(coord,1)))  # index in the full gen list
+    id2 = Int64.(zeros(size(coord,1))) # index in the producing gen list
+    for i in 1:size(coord,1)
+        temp = dm.idgen[idprod[idavail]]
+        id[i] = idprod[idavail[argmin((dm.coord[temp,1] .- coord[i,1]).^2 +
+            (dm.coord[temp,2] .- coord[i,2]).^2)]]
+        id2[i] = idavail[argmin((dm.coord[temp,1] .- coord[i,1]).^2 +
+            (dm.coord[temp,2] .- coord[i,2]).^2)]
+    end
+    return id, id2
+end
+
+
+function find_node(
+    cm::ContModel,
+    gps_coord::Array{Float64, 2};
+    scale_factor::Float64 = 1.0
+)
+    coord = albers_projection(gps_coord[:,[2;1]] ./ (180 / pi) )
+    coord = coord[:,[2,1]] / scale_factor
+
+    id = Int64.(zeros(size(coord,1))) # index in the full gen list
+    for i in 1:size(coord,1)
+        id[i] = argmin((cm.coord[cm.isgrid,1] .- coord[i,1]).^2 +
+            (cm.coord[cm.isgrid,2] .- coord[i,2]).^2)
+    end
+    return id
+end
+
+function find_node2(
+    cm::ContModel,
+    coord::Array{Float64, 2}
+)
+    id = Int64.(zeros(size(coord,1))) # index in the full gen list
+    for i in 1:size(coord,1)
+        id[i] = argmin((cm.coord[cm.isgrid,1] .- coord[i,1]).^2 +
+            (cm.coord[cm.isgrid,2] .- coord[i,2]).^2)
+    end
+    return id
 end
 

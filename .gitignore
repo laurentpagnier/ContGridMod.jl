@@ -1,9 +1,13 @@
 notebooks/.ipynb_checkpoints*
-scripts/.ipynb_checkpoints*
+src/.ipynb_checkpoints*
+docs/.ipynb_checkpoints*
+notebooks*
 numerics*
+figures*
 notebooks/tmp.gif
 *.DS_Store
 *.synctex.gz
 *.log
 *.aux
 *.bib
+.history/
