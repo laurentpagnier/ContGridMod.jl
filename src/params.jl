@@ -120,7 +120,8 @@ function get_params(
         b,
         m,
         d,
-        zeros(size(d))
+        zeros(size(d)),
+        scale_factor,
     )
 end
 
@@ -155,7 +156,7 @@ function load_discrete_model(
 )
     data = h5read(dataname, "/")
     coord = albers_projection( data["bus_coord"] ./ (180 / pi) )
-    coord = coord[:,[2,1]] / scaling_factor
+    coord ./= scaling_factor
     dm = DiscModel(
         vec(data["gen_inertia"]),
         vec(data["gen_prim_ctrl"]),

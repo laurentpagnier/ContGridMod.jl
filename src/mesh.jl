@@ -141,7 +141,7 @@ function get_mesh(
     return mesh = Mesh(
         Nx,
         Ny,
-        Float64.(bus_coord),
+        Float64.(bus_coord[:,2:-1:1]),
         Float64.(line_coord),
         incidence_mat,
         vec(isgrid),

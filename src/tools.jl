@@ -40,7 +40,7 @@ end
 
 
 function albers_projection(
-    coord::Array{Float64,2}; # as lon lat
+    coord::Array{Float64,2}; # as latitude, longitude 
     lon0::Float64 = 13.37616 / 180 * pi,
     lat0::Float64 = 46.94653 / 180 * pi,
     lat1::Float64 = 10 / 180 * pi,
@@ -49,9 +49,9 @@ function albers_projection(
 )
     # see https://en.wikipedia.org/wiki/Albers_projection
     n = 1 / 2 * (sin(lat1) + sin(lat2))
-    theta = n * (coord[:, 1] .- lon0)
+    theta = n * (coord[:, 2] .- lon0)
     c = cos(lat1)^2 + 2 * n * sin(lat1)
-    rho = R / n * sqrt.(c .- 2 * n * sin.(coord[:, 2]))
+    rho = R / n * sqrt.(c .- 2 * n * sin.(coord[:, 1]))
     rho0 = R / n * sqrt.(c - 2 * n * sin(lat0))
     x = rho .* sin.(theta)
     y = rho0 .- rho .* cos.(theta)
@@ -141,7 +141,6 @@ function import_json_numerics(
     keys = keys[isdef]
     data = Dict{String, Array{Float64,2}}()
     for k  in keys
-        println(k)
         N = size(raw_data[k], 1)
         M = size(raw_data[k][1], 1) # assumes that data consists of matrices
         temp = zeros(N, M)
@@ -183,3 +182,60 @@ function get_cont_values(
     values[isgrid] = v
     return values
 end
+
+
+function find_gen(
+    dm::DiscModel,
+    gps_coord::Array{Float64, 2},
+    dP::Float64;
+    scale_factor::Float64 = 1.0
+)
+    #find the the nearest generator that can "withstand" a dP fault
+    coord = albers_projection(gps_coord[:,[2;1]] ./ (180 / pi) )
+    coord = coord[:,[2,1]] / scale_factor
+    idprod = findall((dm.gen .> 0.0))
+    idavail = findall(dm.max_gen[idprod] .> dP) # find id large gens in the prod list
+    # println(size(idprod))
+    # println(idavail)
+    #idprod = findall((dm.gen .> 0.0))
+    id = Int64.(zeros(size(coord,1)))  # index in the full gen list
+    id2 = Int64.(zeros(size(coord,1))) # index in the producing gen list
+    for i in 1:size(coord,1)
+        temp = dm.idgen[idprod[idavail]]
+        id[i] = idprod[idavail[argmin((dm.coord[temp,1] .- coord[i,1]).^2 +
+            (dm.coord[temp,2] .- coord[i,2]).^2)]]
+        id2[i] = idavail[argmin((dm.coord[temp,1] .- coord[i,1]).^2 +
+            (dm.coord[temp,2] .- coord[i,2]).^2)]
+    end
+    return id, id2
+end
+
+
+function find_node_from_gps(
+    cm::ContModel,
+    gps_coord::Array{Float64, 2}
+)
+    coord = albers_projection(gps_coord ./ (180 / pi) )
+    coord ./= cm.scale_factor
+
+    id = Int64.(zeros(size(coord,1))) # index in the full gen list
+    for i in 1:size(coord,1)
+        id[i] = argmin((cm.mesh.coord[:,1] .- coord[i,1]).^2 +
+            (cm.mesh.coord[:,2] .- coord[i,2]).^2)
+    end
+    return id
+end
+
+
+function find_node(
+    cm::ContModel,
+    coord::Array{Float64, 2}
+)
+    id = Int64.(zeros(size(coord,1))) # index in the full gen list
+    for i in 1:size(coord,1)
+        id[i] = argmin((cm.mesh.coord[:,1] .- coord[i,1]).^2 +
+            (cm.mesh.coord[:,2] .- coord[i,2]).^2)
+    end
+    return id
+end
+

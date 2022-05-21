@@ -80,23 +80,23 @@ function perform_dyn_sim_crank_nicolson(
     dt::Float64 = 0.05
 )
     println("Total time: ", dt * Ndt)
-    N = sum(contmod.isgrid)
+    N = size(contmod.mesh.coord,1)
     M = 1 + Int64(ceil(Ndt/interval))
     omegas = zeros(N, M)
     thetas = zeros(N, M)
     ts = zeros(M)
     
-    x = [copy(contmod.th[contmod.isgrid]); zeros(N)]
+    x = [copy(contmod.th); zeros(N)]
     omegas[:, 1] = zeros(N)
-    thetas[:, 1] = copy(contmod.th[contmod.isgrid])  
+    thetas[:, 1] = copy(contmod.th)  
 
     ts = zeros(1 + Int64(ceil(Ndt/interval)))
 
     I = sparse(1:N, 1:N, ones(N))
     A = [I -dt / 2 * I;
-        - dt / 2 / contmod.dx^2 * sparse(1:N, 1:N, contmod.minv) * contmod.xi (I + dt/2 * sparse(1:N, 1:N, contmod.gamma))]
+        - dt / 2 / contmod.mesh.dx^2 * sparse(1:N, 1:N, contmod.minv) * contmod.xi (I + dt/2 * sparse(1:N, 1:N, contmod.gamma))]
     B = [I dt / 2 * I;
-         dt / 2 / contmod.dx^2 * sparse(1:N, 1:N, contmod.minv) * contmod.xi (I - dt/2 * sparse(1:N, 1:N, contmod.gamma))]
+         dt / 2 / contmod.mesh.dx^2 * sparse(1:N, 1:N, contmod.minv) * contmod.xi (I - dt/2 * sparse(1:N, 1:N, contmod.gamma))]
     C = [zeros(N); dt * sparse(1:N, 1:N, contmod.minv) * contmod.p]
 
     @time begin
@@ -106,8 +106,8 @@ function perform_dyn_sim_crank_nicolson(
             if(mod(t,interval) == 0)
                 thetas[:,Int64(t/interval) + 1] = x[1:N]
                 omegas[:,Int64(t/interval) + 1] = x[N+1:end]
-                ts[Int64(t/interval) + 1] = t*dt
-                println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1]) / sum(contmod.isgrid))
+                ts[Int64(t/interval) + 1] = t * dt
+                println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1]) / N)
             end
         end
     end
@@ -146,7 +146,7 @@ function perform_dyn_sim_backward_euler(
             if(mod(t,interval) == 0)
                 thetas[:,Int64(t/interval) + 1] = x[1:N]
                 omegas[:,Int64(t/interval) + 1] = x[N+1:end]
-                ts[Int64(t/interval) + 1] = t*dt
+                ts[Int64(t/interval) + 1] = t * dt
                 println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1])/sum(contmod.isgrid))
             end
         end

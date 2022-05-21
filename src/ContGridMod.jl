@@ -39,6 +39,7 @@ mutable struct ContModel
     m::Vector{Float64}
     d::Vector{Float64}
     th::Vector{Float64}
+    scale_factor::Float64
 end
 
 include("disc_solvers.jl");

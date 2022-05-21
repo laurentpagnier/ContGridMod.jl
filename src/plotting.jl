@@ -6,10 +6,11 @@ export hm_plot, time_plot, hm_movie, disc_plot, cmp_plot
 function hm_plot(
     contmodel::ContModel,
     field::String;
-    borders::Array{Array{Float64,2},1} = Array{Float64,2}[],
+    border::Array{Float64,2} = zeros(0,2),
     clim::Tuple{Float64, Float64} = (0.0,0.0),
     c = :inferno,
-    cb_title::String = ""
+    cb_title::String = "",
+    colorbar = true,
 )
     global cm = contmodel
     eval(Meta.parse("temp = cm.$(field)"))
@@ -20,15 +21,17 @@ function hm_plot(
         Plots.heatmap(contmodel.mesh.xrange, contmodel.mesh.yrange,
             reshape(value, contmodel.mesh.Ny, contmodel.mesh.Nx),
             #c = c, colorbar_title=cb_title)
-            c = c, colorbar=false)
+            c = c, colorbar = colorbar)
     else
         Plots.heatmap(contmodel.mesh.xrange, contmodel.mesh.yrange,
         reshape(value, contmodel.mesh.Ny, contmodel.mesh.Nx),
         #c = c, clim = clim, colorbar_title=cb_title)
-        c = c, clim = clim, colorbar=false)
+        c = c, clim = clim, colorbar = colorbar)
     end
-    for k in 1:length(borders)
-        p2 = plot!(borders[k][:, 1], borders[k][:, 2], color=:black,linewidth=3.0)
+    if(size(border,1) > 0)
+        x1 = 0.42; x2 = -.62; y1 = 0.37; y2 = -0.4
+        plot!(Shape([border[:, 1]; border[end,1];x1;x1;x2;x2;border[end,1]],
+        [border[:, 2];y1; y1;y2;y2;y1;y1]); color = :white, linecolor = :white)
     end
     plot!(legend=false, grid=false, showaxis=:hide, xaxis=nothing,
     yaxis=nothing, aspect_ratio=:equal)
@@ -69,7 +72,7 @@ function time_plot(
     contmod::ContModel,
     time::Array{Float64, 1},
     values::Array{Float64, 2}, # timeseries from the continous model
-    coord::Array{Float64, 2}; 
+    gps_coord::Array{Float64, 2}; 
     borders::Array{Array{Float64,2},1} = Array{Float64,2}[],
     xlabel::String = String("\$t\\;[s]\$"),
     ylabel::String = String("\$\\omega \$"),
@@ -87,27 +90,27 @@ function time_plot(
         idend = length(time) 
     end
     cp = palette(:tab10)
-    grid_coord = contmod.coord[contmod.isgrid,:]
-
+    grid_coord = contmod.mesh.coord
+    plot_id = find_node_from_gps(contmod, gps_coord)
     p1 = Plots.Plot()
-    for k in 1:size(coord, 1)
-        dx = grid_coord[:, 1] .- coord[k, 2]
-        dy = grid_coord[:, 2] .- coord[k, 1]
-        id = argmin(dx.^2 + dy.^2)
+    for k in 1:length(plot_id)
+        #dx = grid_coord[:, 2] .- coord[k, 2]
+        #dy = grid_coord[:, 1] .- coord[k, 1]
+        #id = argmin(dx.^2 + dy.^2)
         if(k == 1)
-            p1 = plot(time[idstart:idend], values[id, idstart:idend], color=cp[k])
+            p1 = plot(time[idstart:idend], values[plot_id[k], idstart:idend], color=cp[k])
         else
-            p1 = plot!(time[idstart:idend], values[id, idstart:idend], color=cp[k])
+            p1 = plot!(time[idstart:idend], values[plot_id[k], idstart:idend], color=cp[k])
         end
     end
     plot!(legend = false, xlabel = xlabel, ylabel = ylabel, grid=false, linewidth=1)
      
     p2 = Plots.Plot()
-    for k in 1:size(coord, 1)
+    for k in 1:length(plot_id)
         if(k == 1)
-            p2 = scatter([coord[k, 1]], [coord[k, 2]], color=cp[k], markerstrokecolor=cp[k], markersize=5)
+            p2 = scatter([grid_coord[plot_id[k], 1]], [grid_coord[plot_id[k], 2]], color=cp[k], markerstrokecolor=cp[k], markersize=5)
         else
-            p2 = scatter!([coord[k, 1]], [coord[k, 2]], color=cp[k], markerstrokecolor=cp[k], markersize=5)
+            p2 = scatter!([grid_coord[plot_id[k], 1]], [grid_coord[plot_id[k], 2]], color=cp[k], markerstrokecolor=cp[k], markersize=5)
         end
     end
     for k in 1:length(borders)
