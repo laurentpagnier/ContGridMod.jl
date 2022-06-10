@@ -40,6 +40,11 @@ mutable struct ContModel
     d::Vector{Float64}
     th::Vector{Float64}
     scale_factor::Float64
+    dmax::Float64
+    Niter::Int64
+    tau::Float64
+    patch::Float64
+    min_factor::Float64
 end
 
 include("disc_solvers.jl");
