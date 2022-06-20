@@ -21,7 +21,6 @@ function get_params(
     dm = load_discrete_model(dataname, scale_factor)
     #idin = findall(mesh.isinside)
     N = size(mesh.coord, 1)
-    M = size(mesh.line_coord, 1)
     m= zeros(N)
     d = zeros(N)
     pl = zeros(N)
@@ -54,7 +53,6 @@ function get_params(
         dx_l = x2 - x1
         dy_l = y2 - y1
         ds2 = (dy_l^2 + dx_l^2)
-        phi = atan(dy_l, dx_l)
         if(dx_l != 0 && dy_l != 0) # if not a transformer
             y = mesh.coord[:, 1] # it's "less precise" but way simpler to implement 
             x = mesh.coord[:, 2] # using node locations instead of centers of lines, 
@@ -137,12 +135,16 @@ function heat_diff(
     # parameters over the lattice with tau=kappa*dt
     n = size(mesh.inc_mat, 1)
     N = size(mesh.coord, 1)
+    # incidence matrix
     temp = sparse([mesh.inc_mat[:,1]; mesh.inc_mat[:,2]], [1:n; 1:n], [-ones(n); ones(n)])
+    # - Laplacian
     xi = -temp * temp' 
+    
+    # Crank-Nicolson
     I = sparse(1:N, 1:N, ones(N))
     A = 2.0 .* I - tau .* xi / mesh.dx^2
     B = 2.0 .* I + tau .* xi / mesh.dx^2
-    for t in 1:Niter
+    for _ in 1:Niter
         q = A \ (B * q) #way slower when dx -> 0
         #x = A \ x
         #gmres!(x, A , B * x)
