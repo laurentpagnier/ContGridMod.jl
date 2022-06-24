@@ -11,5 +11,4 @@ notebooks/tmp.gif
 *.aux
 *.bib
 .history/
-docs/calibrate_pde_model.ipynb
-docs/trained_b.h5
+plotutil/
