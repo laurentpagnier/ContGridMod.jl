@@ -1,4 +1,4 @@
-export get_params, update_params!, load_discrete_model, update_model!
+export get_params, update_params!, load_discrete_model, update_model!, update_susceptance!
 
 using HDF5
 using Plots
@@ -246,8 +246,15 @@ function update_model!(
     minv = m.^(-1)    
     # Update the paramters
     contmod.minv = minv
-    contmod.gamma = d.* minv
+    contmod.gamma = d .* minv
     contmod.m = m
     contmod.d = d
     contmod.p = p
+end
+
+function update_susceptance!(cm::ContModel, b::Vector{Float64})
+    n = size(cm.mesh.inc_mat, 1)
+    incMat = sparse([cm.mesh.inc_mat[:,1]; cm.mesh.inc_mat[:,2]], [1:n; 1:n], [-ones(n); ones(n)])
+    cm.b = b
+    cm.xi = -incMat * (b .* incMat')
 end

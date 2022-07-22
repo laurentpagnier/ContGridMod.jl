@@ -95,7 +95,7 @@ function perform_dyn_sim_crank_nicolson(
     I = sparse(1:N, 1:N, ones(N))
     A = [I -dt / 2 * I;
         - dt / 2 / contmod.mesh.dx^2 * sparse(1:N, 1:N, contmod.minv) * contmod.xi (I + dt/2 * sparse(1:N, 1:N, contmod.gamma))]
-    B = [I dt / 2 * I;
+    B = [I +dt / 2 * I;
          dt / 2 / contmod.mesh.dx^2 * sparse(1:N, 1:N, contmod.minv) * contmod.xi (I - dt/2 * sparse(1:N, 1:N, contmod.gamma))]
     C = [zeros(N); dt * sparse(1:N, 1:N, contmod.minv) * contmod.p]
 
