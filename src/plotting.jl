@@ -15,8 +15,8 @@ function hm_plot(
     global cm = contmodel
     eval(Meta.parse("temp = cm.$(field)"))
     value = zeros(contmodel.mesh.Ny, contmodel.mesh.Nx)
-    value[contmodel.mesh.isgrid] = temp
-    value[.!contmodel.mesh.isgrid] .= NaN
+    value[contmodel.mesh.is_grid] = temp
+    value[.!contmodel.mesh.is_grid] .= NaN
     if(clim == (0.0, 0.0))
         Plots.heatmap(contmodel.mesh.xrange, contmodel.mesh.yrange,
             reshape(value, contmodel.mesh.Ny, contmodel.mesh.Nx),
@@ -80,7 +80,7 @@ function time_plot(
     tend::Float64 = 0.0
 )
     if(tstart != 0.0)
-        idstart = findall(tstart .< ts)[1]
+        idstart = findall(tstart .< time)[1]
     else
         idstart = 1 
     end
@@ -108,9 +108,11 @@ function time_plot(
     p2 = Plots.Plot()
     for k in 1:length(plot_id)
         if(k == 1)
-            p2 = scatter([grid_coord[plot_id[k], 1]], [grid_coord[plot_id[k], 2]], color=cp[k], markerstrokecolor=cp[k], markersize=5)
+            p2 = scatter([grid_coord[plot_id[k], 1]], [grid_coord[plot_id[k], 2]],
+                color = cp[k], markerstrokecolor = cp[k], markersize = 5)
         else
-            p2 = scatter!([grid_coord[plot_id[k], 1]], [grid_coord[plot_id[k], 2]], color=cp[k], markerstrokecolor=cp[k], markersize=5)
+            p2 = scatter!([grid_coord[plot_id[k], 1]], [grid_coord[plot_id[k], 2]],
+                color = cp[k], markerstrokecolor = cp[k], markersize = 5)
         end
     end
     for k in 1:length(borders)

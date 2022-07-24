@@ -1,13 +1,23 @@
-export compute_stable_sol!
+export compute_stable_sol!, ompute_stable_sol
 
 function compute_stable_sol!(
-    cm::ContModel
+    cm::ContModel,
 )
-    # Find slack bus and remove from ids, create map from grounded to full model
-    n = size(cm.mesh.coord, 1)
-    idSlack = 1
-    idsWoSlack = setdiff(1:n, idSlack)
-    unground = sparse(idsWoSlack, 1:n-1, ones(n-1), n, n-1)
-    pGround = cm.p[idsWoSlack]
-    cm.th = -unground * (cm.xi[idsWoSlack, idsWoSlack] \ pGround * cm.mesh.dx^2)
+    cm.th = compute_stable_sol(cm)
 end
+
+
+function compute_stable_sol(
+    cm::ContModel,
+)
+    B = sparse([cm.mesh.id_edge[:,1]; cm.mesh.id_edge[:,2]],
+        [1:cm.mesh.Nedge; 1:cm.mesh.Nedge], [-ones(cm.mesh.Nedge); ones(cm.mesh.Nedge)])
+    id = setdiff(1:cm.mesh.Nnode, cm.id_slack)
+    I = sparse(id, 1:cm.mesh.Nnode-1, ones(cm.mesh.Nnode-1),
+        cm.mesh.Nnode, cm.mesh.Nnode-1)
+    Bns = B[id,:]
+    Bnst = SparseMatrixCSC{Float64, Int64}(Bns')
+    M = -Bns * (cm.b .* Bnst)
+    return I * (M \ - cm.p[id] * cm.mesh.dx^2)
+end
+

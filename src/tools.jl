@@ -1,9 +1,9 @@
 export back_to_2d, albers_projection, import_json_numerics, import_border, get_discrete_values, copy_model
 
-using ContGridMod
-using JSON
-
-function inPolygon(p::Array{Float64,2}, poly::Array{Float64,2})
+function inPolygon(
+    p::Matrix{Float64},
+    poly::Matrix{Float64},
+)
     N = size(poly, 1)
     isin = falses(size(p, 1))
     for k = 1:size(p, 1)
@@ -31,11 +31,27 @@ end
 function copy_model(
     cm::ContModel
 )
-    return ContModel(copy(cm.Nx), copy(cm.Ny), copy(cm.coord),
-        copy(cm.isinside), copy(cm.isborder), copy(cm.isgrid),
-        copy(cm.yrange), copy(cm.xrange), copy(cm.n), copy(cm.dx),
-        copy(cm.minv), copy(cm.gamma), copy(cm.p), copy(cm.xi),
-        copy(cm.bx), copy(cm.by), copy(cm.m), copy(cm.d), copy(cm.th))
+    keys = fieldnames(ContGridMod.ContModel)
+    data = Tuple(perform_copy(getfield(cm, k)) for k in keys)
+    return ContModel(data...)
+end
+
+
+function copy_mesh(
+    mesh::Mesh
+)
+    keys = fieldnames(Mesh)
+    data = Tuple(copy(getfield(mesh, k)) for k in keys)
+    return Mesh(data...)
+end
+
+
+function perform_copy(field)
+    if typeof(field) == Mesh
+        return copy_mesh(field)
+    else
+        return copy(field)
+    end
 end
 
 
@@ -107,9 +123,9 @@ end
 
 
 function get_discrete_values(
-    grid_coord::Array{Float64,2},
-    disc_coord::Array{Float64,2},
-    v::Array{Float64,1}
+    grid_coord::Matrix{Float64},
+    disc_coord::Matrix{Float64},
+    v::Vector{Float64}
 )
     disc_v = zeros(size(disc_coord,1))
     #map((i) -> )
@@ -155,7 +171,12 @@ function import_json_numerics(
 end
 
 
-function back_to_2d(isgrid::BitVector, Ny::Int64, Nx::Int64, valueflat::Array{Float64,2})
+function back_to_2d(
+    isgrid::BitVector,
+    Ny::Int64,
+    Nx::Int64,
+    valueflat::Matrix{Float64},
+)
     value = zeros(Ny, Nx, size(valueflat, 2))
     for t in 1:size(valueflat, 2)
     	temp = zeros(size(isgrid))
@@ -216,7 +237,7 @@ function find_node_from_gps(
     gps_coord::Array{Float64, 2}
 )
     coord = albers_projection(gps_coord ./ (180 / pi) )
-    coord ./= cm.scale_factor
+    coord ./= cm.mesh.scale_factor
 
     id = Int64.(zeros(size(coord,1))) # index in the full gen list
     for i in 1:size(coord,1)
@@ -235,6 +256,19 @@ function find_node(
     for i in 1:size(coord,1)
         id[i] = argmin((cm.mesh.coord[:,1] .- coord[i,1]).^2 +
             (cm.mesh.coord[:,2] .- coord[i,2]).^2)
+    end
+    return id
+end
+
+
+function find_node(
+    m::Mesh,
+    coord::Array{Float64, 2}
+)
+    id = Int64.(zeros(size(coord,1))) # index in the full gen list
+    for i in 1:size(coord,1)
+        id[i] = argmin((m.coord[:,1] .- coord[i,1]).^2 +
+            (m.coord[:,2] .- coord[i,2]).^2)
     end
     return id
 end

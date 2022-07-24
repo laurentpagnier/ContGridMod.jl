@@ -1,20 +1,24 @@
 module ContGridMod
 
+using JSON
 using SparseArrays
 
 mutable struct DiscModel
-    mg::Array{Float64, 1}
-    dg::Array{Float64, 1}
-    idgen::Array{Int64, 1}
-    coord::Array{Float64, 2}
-    dl::Array{Float64, 1}
-    idb::Array{Int64, 2}
-    bline::Array{Float64, 1}
-    load::Array{Float64, 1}
-    th::Array{Float64, 1}
-    gen::Array{Float64, 1}
-    max_gen::Array{Float64, 1}
+    m_gen::Vector{Float64} # generator inertia
+    d_gen::Vector{Float64} # generator damping
+    id_gen::Vector{Int64} # generator inertia
+    id_slack::Int64 # index of the slack bus
+    coord::Matrix{Float64} # coordinates in 
+    d_load::Vector{Float64}
+    id_line::Matrix{Int64} # list of indices
+    b::Vector{Float64} # susceptance
+    p_load::Vector{Float64} 
+    th::Vector{Float64}
+    p_gen::Vector{Float64}
+    max_gen::Vector{Float64}
     Nbus::Int64
+    Ngen::Int64
+    Nline::Int64
 end
 
 mutable struct Mesh
@@ -22,29 +26,26 @@ mutable struct Mesh
     Ny::Int64
     coord::Matrix{Float64}
     line_coord::Matrix{Float64}
-    inc_mat::Matrix{Int64}
-    isgrid::BitVector
+    id_edge::Matrix{Int64}
+    is_grid::BitVector
     yrange::Vector{Float64}
     xrange::Vector{Float64}
     dx::Float64
+    border::Matrix{Float64}
+    scale_factor::Float64
+    Nedge::Int64
+    Nnode::Int64
 end
 
 mutable struct ContModel
     mesh::Mesh
-    minv::Vector{Float64}
-    gamma::Vector{Float64}
+    id_slack::Int64
     p::Vector{Float64}
-    xi::SparseMatrixCSC{Float64, Int64}
+    dp::Vector{Float64}
     b::Vector{Float64}
     m::Vector{Float64}
     d::Vector{Float64}
     th::Vector{Float64}
-    scale_factor::Float64
-    dmax::Float64
-    Niter::Int64
-    tau::Float64
-    patch::Float64
-    min_factor::Float64
 end
 
 include("disc_solvers.jl");

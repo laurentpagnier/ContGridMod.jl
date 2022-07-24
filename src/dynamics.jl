@@ -47,19 +47,26 @@ function perform_dyn_sim_forward(
     omegas[:,1] = zeros(size(th))
     thetas[:,1] = copy(contmod.th[contmod.isgrid])  
 
-    chi = 1 ./ (1 .+ contmod.gamma*dt/2)
+    minv = 1 ./ contmod.m
+    gamma = contmod.d ./ contmod.m
+    Nedge = contmod.mesh.Nedge
+    temp = sparse([contmod.mesh.id_edge[:,1]; contmod.mesh.id_edge[:,2]],
+        [1:Nedge; 1:Nedge], [-ones(Nedge); ones(Nedge)])
+    L = - temp * (contmod.b .* temp')
 
-    A = (2 * chi - dt^2/dx^2 * contmod.minv)
-    B = (1 .- contmod.gamma * dt / 2) .* chi
-    C = dt^2 * chi .* contmod.minv .* contmod.p
+    chi = 1 ./ (1 .+ gamma*dt/2)
+
+    A = (2 * chi - dt^2/dx^2 * minv)
+    B = (1 .- gamma * dt / 2) .* chi
+    C = dt^2 * chi .* minv .* (contmod.p + contmod.dp)
     
     @time begin
         for t in 1:Ndt
             th_new = 2 * chi .* th +
-                dt^2 / dx^2 .* contmod.minv .* chi .* (xi * th) -
+                dt^2 / dx^2 .* minv .* chi .* (L * th) -
                 B .* th_old + C
             if(mod(t,interval) == 0)
-                omegas[:,Int64(t/interval) + 1] = (th_new-th) / dt
+                omegas[:,Int64(t/interval) + 1] = (th_new - th) / dt
                 thetas[:,Int64(t/interval) + 1] = th_new
                 ts[Int64(t/interval) + 1] = t * dt
                 println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1])/sum(contmod.isgrid))
@@ -80,7 +87,7 @@ function perform_dyn_sim_crank_nicolson(
     dt::Float64 = 0.05
 )
     println("Total time: ", dt * Ndt)
-    N = size(contmod.mesh.coord,1)
+    N = contmod.mesh.Nnode
     M = 1 + Int64(ceil(Ndt/interval))
     omegas = zeros(N, M)
     thetas = zeros(N, M)
@@ -92,17 +99,24 @@ function perform_dyn_sim_crank_nicolson(
 
     ts = zeros(1 + Int64(ceil(Ndt/interval)))
 
+    minv = 1 ./ contmod.m
+    gamma = contmod.d ./ contmod.m
+    Nedge = contmod.mesh.Nedge
+    temp = sparse([contmod.mesh.id_edge[:,1]; contmod.mesh.id_edge[:,2]],
+        [1:Nedge; 1:Nedge], [-ones(Nedge); ones(Nedge)])
+    L = - temp * (contmod.b .* temp')
+    
     I = sparse(1:N, 1:N, ones(N))
     A = [I -dt / 2 * I;
-        - dt / 2 / contmod.mesh.dx^2 * sparse(1:N, 1:N, contmod.minv) * contmod.xi (I + dt/2 * sparse(1:N, 1:N, contmod.gamma))]
-    B = [I +dt / 2 * I;
-         dt / 2 / contmod.mesh.dx^2 * sparse(1:N, 1:N, contmod.minv) * contmod.xi (I - dt/2 * sparse(1:N, 1:N, contmod.gamma))]
-    C = [zeros(N); dt * sparse(1:N, 1:N, contmod.minv) * contmod.p]
+        - dt / 2 / contmod.mesh.dx^2 * minv .* L (I + dt/2 * sparse(1:N, 1:N, gamma))]
+    B = [I  dt / 2 * I;
+         dt / 2 / contmod.mesh.dx^2 * minv .* L (I - dt/2 * sparse(1:N, 1:N, gamma))]
+    C = [zeros(N); dt * minv .* (contmod.p + contmod.dp)]
 
     @time begin
         for t in 1:Ndt
-            #x = A \ (B * x + C) # way slower when dx -> 0
-            gmres!(x, A , B * x + C)
+            x = A \ (B * x + C) # way slower when dx -> 0
+            #gmres!(x, A , B * x + C)
             if(mod(t,interval) == 0)
                 thetas[:,Int64(t/interval) + 1] = x[1:N]
                 omegas[:,Int64(t/interval) + 1] = x[N+1:end]
@@ -128,16 +142,23 @@ function perform_dyn_sim_backward_euler(
     thetas = zeros(N, M)
     ts = zeros(M)
     
-    x = [copy(contmod.th[contmod.isgrid]); zeros(N)]
+    x = [copy(contmod.th); zeros(N)]
     omegas[:,1] = zeros(N)
-    thetas[:,1] = copy(contmod.th[contmod.isgrid])  
+    thetas[:,1] = copy(contmod.th)  
 
     ts = zeros(1 + Int64(ceil(Ndt/interval)))
 
     I = sparse(1:N, 1:N, ones(N))
+    minv = 1 ./ contmod.m
+    gamma = contmod.d ./ contmod.m
+    Nedge = contmod.mesh.Nedge
+    temp = sparse([contmod.mesh.id_edge[:,1]; contmod.mesh.id_edge[:,2]],
+        [1:Nedge; 1:Nedge], [-ones(Nedge); ones(Nedge)])
+    L = - temp * (contmod.b .* temp')
+    
     A = [I -dt * I;
-        - dt / dx^2 * sparse(1:N, 1:N, contmod.minv) * contmod.xi (I + dt * sparse(1:N, 1:N, contmod.gamma))]
-    B = [zeros(N); dt * sparse(1:N, 1:N, contmod.minv) * contmod.p]
+        - dt / dx^2 * minv .* L (I + dt * sparse(1:N, 1:N, gamma))]
+    B = [zeros(N); dt * minv .* (contmod.p + contmod.dp)]
 
     @time begin
         for t in 1:Ndt
