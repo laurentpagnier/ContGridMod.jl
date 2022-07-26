@@ -6,7 +6,7 @@ function get_dataset(
 )
 	if name == "panta"
 		download("url", location * "panta")
-	esleif name == "smthesle"
+    elseif name == "smthesle"
 	
 	else
 		println(name * " is not a registered data set.")

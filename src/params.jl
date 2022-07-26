@@ -1,4 +1,4 @@
-export get_params, update_params!, load_discrete_model, update_model!
+export get_params, load_discrete_model, update_model!, update_model_dm!
 
 using HDF5
 using Plots
@@ -236,9 +236,67 @@ function update_model!(
     model_keys = String.(collect(fieldnames(ContGridMod.ContModel)))
     for k in data_keys
         if k in model_keys
-            setfield!(contmod, Symbol(k), b)
+            setfield!(contmod, Symbol(k), data[k])
         end
     end
 end
 
+function update_model_dm!(
+    contmod::ContModel,
+    dm::DiscModel,
+)
+    # Update the dynamical parameters of the model from a discrete model
+    N = size(contmod.mesh.coord, 1)
 
+    m = zeros(N)
+    d = zeros(N)
+    pl = zeros(N)
+    pg = zeros(N)
+
+    Threads.@threads for g in 1:dm.Ngen
+        if(dm.p_gen[g] > 0.0)
+            k = argmin((contmod.mesh.coord[:, 1] .- dm.coord[dm.id_gen[g],1]).^2 +
+                (contmod.mesh.coord[:, 2] .- dm.coord[dm.id_gen[g],2]).^2)
+            m[k] += dm.m_gen[g]
+            d[k] += dm.d_gen[g]
+            pg[k] += dm.p_gen[g]
+        end
+    end
+
+    Threads.@threads for l in 1:dm.Nbus
+        k = argmin((contmod.mesh.coord[:, 1] .- dm.coord[l,1]).^2 +
+            (contmod.mesh.coord[:, 2] .- dm.coord[l,2]).^2)
+        d[k] += dm.d_load[l]
+        pl[k] += dm.p_load[l]
+    end
+    @time begin
+        m = heat_diff(contmod.mesh, m, Niter = contmod.Niter, tau = contmod.tau)
+        d = heat_diff(contmod.mesh, d, Niter = contmod.Niter, tau = contmod.tau)
+        pl = heat_diff(contmod.mesh, pl, Niter = contmod.Niter, tau = contmod.tau)
+        pg = heat_diff(contmod.mesh, pg, Niter = contmod.Niter, tau = contmod.tau)
+    end
+
+    # asign minimal values to the quantities
+    m .= max.(m, contmod.min_factor * sum(m) / length(m))
+    d .= max.(d, contmod.min_factor * sum(d) / length(m))
+    
+    # ensure that the integrals of the different quantities over
+    # the medium is equivalent to their sum over the discrete model
+    m = (sum(dm.m_gen) / sum(m) / contmod.mesh.dx^2) .* m 
+    d = ((sum(dm.d_gen) + sum(dm.d_load)) / sum(d) / contmod.mesh.dx^2) .* d
+    pl = (sum(dm.p_load) / sum(pl) / contmod.mesh.dx^2) .* pl
+    pg = (sum(dm.p_gen) / sum(pg) / contmod.mesh.dx^2) .* pg
+
+    # ensure that the integral of the power injection is 0, i.e
+    # that generation matches the demand.
+    p = pg - pl
+    p = p .- sum(p) / length(p) 
+
+    minv = m.^(-1)    
+    # Update the paramters
+    contmod.minv = minv
+    contmod.gamma = d.* minv
+    contmod.m = m
+    contmod.d = d
+    contmod.p = p
+end
