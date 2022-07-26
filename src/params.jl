@@ -243,7 +243,10 @@ end
 
 function update_model_dm!(
     contmod::ContModel,
-    dm::DiscModel,
+    dm::DiscModel;
+    Niter::Int64=5000,
+    tau::Float64=0.001,
+    min_factor::Float64 = 0.1,
 )
     # Update the dynamical parameters of the model from a discrete model
     N = size(contmod.mesh.coord, 1)
@@ -270,15 +273,15 @@ function update_model_dm!(
         pl[k] += dm.p_load[l]
     end
     @time begin
-        m = heat_diff(contmod.mesh, m, Niter = contmod.Niter, tau = contmod.tau)
-        d = heat_diff(contmod.mesh, d, Niter = contmod.Niter, tau = contmod.tau)
-        pl = heat_diff(contmod.mesh, pl, Niter = contmod.Niter, tau = contmod.tau)
-        pg = heat_diff(contmod.mesh, pg, Niter = contmod.Niter, tau = contmod.tau)
+        m = heat_diff(contmod.mesh, m, Niter = Niter, tau = tau)
+        d = heat_diff(contmod.mesh, d, Niter = Niter, tau = tau)
+        pl = heat_diff(contmod.mesh, pl, Niter = Niter, tau = tau)
+        pg = heat_diff(contmod.mesh, pg, Niter = Niter, tau = tau)
     end
 
     # asign minimal values to the quantities
-    m .= max.(m, contmod.min_factor * sum(m) / length(m))
-    d .= max.(d, contmod.min_factor * sum(d) / length(m))
+    m .= max.(m, min_factor * sum(m) / length(m))
+    d .= max.(d, min_factor * sum(d) / length(m))
     
     # ensure that the integrals of the different quantities over
     # the medium is equivalent to their sum over the discrete model
@@ -292,10 +295,7 @@ function update_model_dm!(
     p = pg - pl
     p = p .- sum(p) / length(p) 
 
-    minv = m.^(-1)    
     # Update the paramters
-    contmod.minv = minv
-    contmod.gamma = d.* minv
     contmod.m = m
     contmod.d = d
     contmod.p = p
