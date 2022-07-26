@@ -32,19 +32,19 @@ function disc_dynamics(
         faultid = tmp[1]
     end
     # Data preperation
-    Nbus = length(dm.load)
-    is_producing = dm.gen .> 0
-    id_gen = dm.idgen[is_producing]
+    Nbus = dm.Nbus
+    is_producing = dm.p_gen .> 0
+    id_gen = dm.id_gen[is_producing]
     id_load = setdiff(1:Nbus, id_gen)
     ng = length(id_gen)
     nl = length(id_load)
     g = zeros(Nbus)
-    g[dm.idgen] .= dm.gen
-    p = -dm.load + g
+    g[dm.id_gen] .= dm.p_gen
+    p = -dm.p_load + g
     p .-= sum(p) / Nbus
-    edges = Int64.(zeros(size(dm.idb)))
-    line_start = dm.idb[:, 1]
-    line_end = dm.idb[:, 2]
+    edges = Int64.(zeros(size(dm.id_line)))
+    line_start = dm.id_line[:, 1]
+    line_end = dm.id_line[:, 2]
     # bus reordering: generator buses first 
     for i in 1:ng
         edges[line_start .== id_gen[i], 1] .= i
@@ -54,26 +54,26 @@ function disc_dynamics(
         edges[line_start .== id_load[i], 1] .= i + ng
         edges[line_end .== id_load[i], 2] .= i + ng
     end
-    nline = size(dm.idb,1)
+    nline = size(dm.id_line,1)
     id = edges
     inc = sparse([id[:,1]; id[:,2]], [1:nline; 1:nline], [-ones(nline);ones(nline)])
 
     # set initial conditions
-    mg = dm.mg[is_producing]
-    dg = dm.dg[is_producing]
-    dg += dm.dl[id_gen]
-    dl = dm.dl[id_load]
+    mg = dm.m_gen[is_producing]
+    dg = dm.d_gen[is_producing]
+    dg += dm.d_load[id_gen]
+    dl = dm.d_load[id_load]
     pg = p[id_gen]
     pl = p[id_load]
     p = [pg; pl]
     # get the stable solution
-    b2 = - im .* dm.bline
+    b2 = - im .* dm.b
     Ybus = conj(inc * sparse(1:nline, 1:nline, b2) * inc')
     q = zeros(Nbus)
     V = ones(Nbus)
     theta = zeros(Nbus)
 
-    V, theta, iter = NRsolver(Ybus, V, theta, -p, q, Array{Int64,1}([]), 1, tol = 1E-30, maxiter = 10)
+    V, theta, iter = NRsolver(Ybus, V, theta, -p, q, Array{Int64,1}([]), 1, tol = 1E-10, maxiter = 10)
     thg = theta[1:ng]
     thl = theta[ng+1:end]
     og = zeros(ng);
@@ -83,7 +83,7 @@ function disc_dynamics(
     dp = zeros(ng)
     dp[faultid] = -9.0
     for i in 1:Ndt
-        y = radau5(og, thg, thl, mg, dg, dl, pg+dp, pl, inc, dm.bline, dt, maxiter = 14, tol = 1E-6)
+        y = radau5(og, thg, thl, mg, dg, dl, pg+dp, pl, inc, dm.b, dt, maxiter = 14, tol = 1E-6)
         if(mod(i, interval) == 0)
             println(i, " / ", Ndt, " (", floor(100*i/Ndt), "%)")
                 omegas[:, k+1] = y[1 : ng]
@@ -236,7 +236,7 @@ function NRsolver(
         x = J \ dPQ
         theta[id] = theta[id] - x[1:nb-1]
         if(!isempty(idpq))
-            V[idpq] -= x[n:end]
+            V[idpq] -= x[nb:end]
         end
         error = maximum(abs.(dPQ))
         iter += 1
