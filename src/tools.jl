@@ -100,51 +100,6 @@ function import_border(
 end
 
 
-function get_discrete_id(
-    grid_coord::Array{Float64,2},
-    disc_coord::Array{Float64,2},
-)
-    ids = Int64.(zeros(size(disc_coord,1)))
-    for i in 1:size(ids,1)
-        ids[i] = argmin((grid_coord[:,1] .- disc_coord[i,1]).^2 +
-        (grid_coord[:,2] .- disc_coord[i,2]).^2)
-    end
-
-    return ids
-end
-
-
-function get_discrete_values(
-    ids::Vector{Int64},
-    v::Vector{Float64}
-)
-    return [v[ids[i]] for i = 1:length(ids)]
-end
-
-
-function get_discrete_values(
-    grid_coord::Matrix{Float64},
-    disc_coord::Matrix{Float64},
-    v::Vector{Float64}
-)
-    disc_v = zeros(size(disc_coord,1))
-    #map((i) -> )
-    for i in 1:size(disc_v,1)
-        id = argmin((grid_coord[:,1] .- disc_coord[i,1]).^2 +
-        (grid_coord[:,2] .- disc_coord[i,2]).^2)
-        disc_v[i] = disc_v[i] + v[id] # changed to avoid "Mutating arrays is not supported"
-    end
-    #=
-    for i in 1:size(disc_v,1)
-        id = argmin((grid_coord[:,1] .- disc_coord[i,1]).^2 +
-        (grid_coord[:,2] .- disc_coord[i,2]).^2)
-        disc_v[i] = disc_v[i] + v[id] # changed to avoid "Mutating arrays is not supported"
-    end
-    =#
-    return disc_v
-end
-
-
 function import_json_numerics(
     filename::String
 )
@@ -205,33 +160,6 @@ function get_cont_values(
 end
 
 
-function find_gen(
-    dm::DiscModel,
-    gps_coord::Array{Float64, 2},
-    dP::Float64;
-    scale_factor::Float64 = 1.0
-)
-    #find the the nearest generator that can "withstand" a dP fault
-    coord = albers_projection(gps_coord[:,[2;1]] ./ (180 / pi) )
-    coord = coord[:,[2,1]] / scale_factor
-    idprod = findall((dm.gen .> 0.0))
-    idavail = findall(dm.max_gen[idprod] .> dP) # find id large gens in the prod list
-    # println(size(idprod))
-    # println(idavail)
-    #idprod = findall((dm.gen .> 0.0))
-    id = Int64.(zeros(size(coord,1)))  # index in the full gen list
-    id2 = Int64.(zeros(size(coord,1))) # index in the producing gen list
-    for i in 1:size(coord,1)
-        temp = dm.idgen[idprod[idavail]]
-        id[i] = idprod[idavail[argmin((dm.coord[temp,1] .- coord[i,1]).^2 +
-            (dm.coord[temp,2] .- coord[i,2]).^2)]]
-        id2[i] = idavail[argmin((dm.coord[temp,1] .- coord[i,1]).^2 +
-            (dm.coord[temp,2] .- coord[i,2]).^2)]
-    end
-    return id, id2
-end
-
-
 function find_node_from_gps(
     cm::ContModel,
     gps_coord::Array{Float64, 2}
@@ -252,24 +180,5 @@ function find_node(
     cm::ContModel,
     coord::Array{Float64, 2}
 )
-    id = Int64.(zeros(size(coord,1))) # index in the full gen list
-    for i in 1:size(coord,1)
-        id[i] = argmin((cm.mesh.coord[:,1] .- coord[i,1]).^2 +
-            (cm.mesh.coord[:,2] .- coord[i,2]).^2)
-    end
-    return id
+    return find_node(cm.mesh, coord)
 end
-
-
-function find_node(
-    m::Mesh,
-    coord::Array{Float64, 2}
-)
-    id = Int64.(zeros(size(coord,1))) # index in the full gen list
-    for i in 1:size(coord,1)
-        id[i] = argmin((m.coord[:,1] .- coord[i,1]).^2 +
-            (m.coord[:,2] .- coord[i,2]).^2)
-    end
-    return id
-end
-

@@ -1,9 +1,10 @@
-export compute_stable_sol!, ompute_stable_sol
+export compute_stable_sol!, compute_stable_sol
 
 function compute_stable_sol!(
     cm::ContModel,
 )
     cm.th = compute_stable_sol(cm)
+    nothing
 end
 
 

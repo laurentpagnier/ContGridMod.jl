@@ -1,4 +1,4 @@
-export perform_dyn_sim, perform_dyn_sim_backward_euler, perform_dyn_sim_crank_nicolson, perform_dyn_sim_forward
+export perform_dyn_sim, perform_dyn_sim_backward_euler, perform_dyn_sim_crank_nicolson, perform_dyn_sim_forward, perform_dyn_sim_runge_kutta
 
 using SparseArrays
 using LinearAlgebra
@@ -17,7 +17,10 @@ function perform_dyn_sim(
             contmod; interval, Ndt, dt)  
     elseif(method == "backward-euler" || method == "be")
         return ts, thetas, omegas = perform_dyn_sim_backward_euler(
-            contmod; interval, Ndt, dt)    
+            contmod; interval, Ndt, dt)  
+    elseif(method == "runge-kutta" || method == "rk")
+        return ts, thetas, omegas = perform_dyn_sim_runge_kutta(
+            contmod; interval, Ndt, dt)  
     elseif(method == "forward" || method == "cf")
         return ts, thetas, omegas = perform_dyn_sim_forward(
             contmod; interval, Ndt, dt)
@@ -69,7 +72,7 @@ function perform_dyn_sim_forward(
                 omegas[:,Int64(t/interval) + 1] = (th_new - th) / dt
                 thetas[:,Int64(t/interval) + 1] = th_new
                 ts[Int64(t/interval) + 1] = t * dt
-                println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1])/sum(contmod.isgrid))
+                pprintln("NIter: $t Avg. Omega: $(sum(omegas[:, Int64(t/interval) + 1]) / N)")
             end
             th_old = copy(th)
             th = copy(th_new)
@@ -80,7 +83,67 @@ function perform_dyn_sim_forward(
 end
 
 
-function perform_dyn_sim_crank_nicolson(
+function DP54(M::SparseMatrixCSC{Float64, Int64}, x::Vector{Float64}, b::Vector{Float64}; dt=0.001)
+    # Dormand–Prince method
+    a21 = 1.0 / 5.0
+    a31 = 3.0 / 40.0
+    a32 = 9.0 / 40.0
+    a41 = 44.0 /45.0
+    a42 = -56.0 / 15.0
+    a43 = 32.0 / 9.0
+    a51 = 19372.0 / 6561.0
+    a52 = -25360.0 / 2187.0
+    a53 = 64448.0 / 6561.0
+    a54 = -212 / 729.0
+    a61 = 9017.0 / 3168.0
+    a62 = -355.0 /33.0
+    a63 = 46732.0 / 5247.0
+    a64 = 49.0 / 176.0
+    a65 = -5103.0 / 18656.0
+    a71 = 35.0 / 384.0
+    a72 = 0.0
+    a73 = 500.0 / 1113.0
+    a74 = 125.0 / 192.0
+    a75 = -2187.0 / 6784.0
+    a76 = 11.0 / 84.0
+    b11 = 35.0 / 384
+    b12 = 0.0
+    b13 = 500.0 / 1113.0
+    b14 = 125.0 / 192.0
+    b15 = -2187.0 / 6784.0
+    b16 = 11.0 / 84.0
+    b17 = 0.0
+    b21 = 5179.0 / 57600.0
+    b22 = 0.0
+    b23 = 7571.0 / 16695.0
+    b24 = 393.0 / 640.0
+    b25 = -92097 / 339200.0
+    b26 = 187.0 / 2100.0
+    b27 = 1.0 / 40.0
+    
+    k1 = M * x + b
+    k2 = M * (x + dt * a21*k1) + b
+    k3 = M * (x + dt * (a31*k1 + a32*k2)) + b
+    k4 = M * (x + dt * (a41*k1 + a42*k2  + a43*k3)) + b
+    k5 = M * (x + dt * (a51*k1 + a52*k2  + a53*k3 + a54*k4)) + b
+    k6 = M * (x + dt * (a61*k1 + a62*k2  + a63*k3 + a64*k4 + a65*k5)) + b
+    k7 = M * (x + dt * (a71*k1 + a72*k2  + a73*k3 + a74*k4 + a75*k5 + a76*k6)) + b
+    y1 = x + dt * (b11*k1 + b12*k2 + b13*k3 + b14*k4 + b15*k5 + b16*k6 + b17*k7)
+    y2 = x + dt * (b21*k1 + b22*k2 + b23*k3 + b24*k4 + b25*k5 + b26*k6 + b27*k7)
+    return y1, y1 - y2
+end
+
+
+function RK4(M::SparseMatrixCSC{Float64, Int64}, x::Vector{Float64}, b::Vector{Float64}; dt=0.001)
+    k1 = M * x + b
+    k2 = M * (x + dt * k1 / 2.0) + b
+    k3 = M * (x + dt * k2 / 2.0) + b
+    k4 = M * (x + dt * k3) + b
+    y = x + dt / 6.0 * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
+end
+
+
+function perform_dyn_sim_runge_kutta(
     contmod::ContModel;
     interval::Int64 = 10,
     Ndt::Int64 = 1000,
@@ -99,29 +162,80 @@ function perform_dyn_sim_crank_nicolson(
 
     ts = zeros(1 + Int64(ceil(Ndt/interval)))
 
-    minv = 1 ./ contmod.m
-    gamma = contmod.d ./ contmod.m
+    Nnode = contmod.mesh.Nnode
     Nedge = contmod.mesh.Nedge
     temp = sparse([contmod.mesh.id_edge[:,1]; contmod.mesh.id_edge[:,2]],
         [1:Nedge; 1:Nedge], [-ones(Nedge); ones(Nedge)])
-    L = - temp * (contmod.b .* temp')
+    L = temp * (contmod.b .* temp') / contmod.mesh.dx^2
     
-    I = sparse(1:N, 1:N, ones(N))
+    minv = 1 ./ contmod.m
+    G = sparse(1:Nnode, 1:Nnode, contmod.d .* minv)
+
+    I = sparse(1:Nnode, 1:Nnode, ones(Nnode))
+
+    A = [spzeros(Nnode,Nnode) I;
+         -minv .* L  -G]
+
+    rhs = [zeros(Nnode); minv .* (contmod.p + contmod.dp)]
+
+    @time begin
+        for t in 1:Ndt
+            x = RK4(A, x, rhs, dt = dt)
+            if mod(t,interval) == 0
+                thetas[:,Int64(t/interval) + 1] = x[1:N]
+                omegas[:,Int64(t/interval) + 1] = x[N+1:end]
+                ts[Int64(t/interval) + 1] = t * dt
+                println("NIter: $t Avg. Omega: $(sum(omegas[:, Int64(t/interval) + 1]) / N)")
+            end
+        end
+    end
+    return ts, thetas, omegas
+end
+
+
+function perform_dyn_sim_crank_nicolson(
+    contmod::ContModel;
+    interval::Int64 = 10,
+    Ndt::Int64 = 1000,
+    dt::Float64 = 0.05
+)
+    println("Total time: ", dt * Ndt)
+    Nnode = contmod.mesh.Nnode
+    Ninterval = 1 + Int64(ceil(Ndt/interval))
+    omegas = zeros(Nnode, Ninterval)
+    thetas = zeros(Nnode, Ninterval)
+    ts = zeros(Ninterval)
+    
+    x = [copy(contmod.th); zeros(Nnode)]
+    omegas[:, 1] = zeros(Nnode)
+    thetas[:, 1] = copy(contmod.th)  
+
+    ts = zeros(1 + Int64(ceil(Ndt/interval)))
+
+    minv = 1 ./ contmod.m
+    gamma = contmod.d ./ contmod.m
+    Nedge = contmod.mesh.Nedge
+    inc_mat = sparse([contmod.mesh.id_edge[:,1]; contmod.mesh.id_edge[:,2]],
+        [1:Nedge; 1:Nedge], [-ones(Nedge); ones(Nedge)])
+    L = inc_mat * (contmod.b .* inc_mat') / contmod.mesh.dx^2
+    G = sparse(1:Nnode, 1:Nnode, gamma)
+    
+    I = sparse(1:Nnode, 1:Nnode, ones(Nnode))
     A = [I -dt / 2 * I;
-        - dt / 2 / contmod.mesh.dx^2 * minv .* L (I + dt/2 * sparse(1:N, 1:N, gamma))]
+        dt / 2 * minv .* L (I + dt/2 * G)]
     B = [I  dt / 2 * I;
-         dt / 2 / contmod.mesh.dx^2 * minv .* L (I - dt/2 * sparse(1:N, 1:N, gamma))]
-    C = [zeros(N); dt * minv .* (contmod.p + contmod.dp)]
+         -dt / 2 * minv .* L (I - dt/2 * G)]
+    C = [zeros(Nnode); dt * minv .* (contmod.p + contmod.dp)]
 
     @time begin
         for t in 1:Ndt
             x = A \ (B * x + C) # way slower when dx -> 0
             #gmres!(x, A , B * x + C)
-            if(mod(t,interval) == 0)
-                thetas[:,Int64(t/interval) + 1] = x[1:N]
-                omegas[:,Int64(t/interval) + 1] = x[N+1:end]
+            if mod(t,interval) == 0
+                thetas[:,Int64(t/interval) + 1] = x[1:Nnode]
+                omegas[:,Int64(t/interval) + 1] = x[Nnode+1:end]
                 ts[Int64(t/interval) + 1] = t * dt
-                println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1]) / N)
+                println("NIter: $t Avg. Omega: $(sum(omegas[:, Int64(t/interval) + 1]) / Nnode)")
             end
         end
     end
@@ -136,7 +250,7 @@ function perform_dyn_sim_backward_euler(
     dt::Float64 = 0.05
 )
     println("Total time: ", dt * Ndt)
-    N = sum(contmod.isgrid)
+    N = contmod.mesh.Nnode
     M = 1 + Int64(ceil(Ndt/interval))
     omegas = zeros(N, M)
     thetas = zeros(N, M)
@@ -152,12 +266,12 @@ function perform_dyn_sim_backward_euler(
     minv = 1 ./ contmod.m
     gamma = contmod.d ./ contmod.m
     Nedge = contmod.mesh.Nedge
-    temp = sparse([contmod.mesh.id_edge[:,1]; contmod.mesh.id_edge[:,2]],
+    inc_mat = sparse([contmod.mesh.id_edge[:,1]; contmod.mesh.id_edge[:,2]],
         [1:Nedge; 1:Nedge], [-ones(Nedge); ones(Nedge)])
-    L = - temp * (contmod.b .* temp')
+    L = inc_mat * (contmod.b .* inc_mat') / contmod.mesh.dx^2 
     
     A = [I -dt * I;
-        - dt / dx^2 * minv .* L (I + dt * sparse(1:N, 1:N, gamma))]
+        dt * minv .* L (I + dt * sparse(1:N, 1:N, gamma))]
     B = [zeros(N); dt * minv .* (contmod.p + contmod.dp)]
 
     @time begin
@@ -168,7 +282,7 @@ function perform_dyn_sim_backward_euler(
                 thetas[:,Int64(t/interval) + 1] = x[1:N]
                 omegas[:,Int64(t/interval) + 1] = x[N+1:end]
                 ts[Int64(t/interval) + 1] = t * dt
-                println("NIter: ", t, " Avg. Omega: ", sum(omegas[:, Int64(t/interval) + 1])/sum(contmod.isgrid))
+                println("NIter: $t Avg. Omega: $(sum(omegas[:, Int64(t/interval) + 1]) / N)")
             end
         end
     end

@@ -48,7 +48,7 @@ mutable struct ContModel
     th::Vector{Float64}
 end
 
-include("disc_solvers.jl");
+include("discrete.jl");
 include("disturbances.jl")
 include("dynamics.jl")
 include("mesh.jl")

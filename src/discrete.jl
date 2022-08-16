@@ -15,7 +15,10 @@ function disc_dynamics(
         interval::Int64 = 100,
         Ndt::Int64 = 25000,
         dt::Float64 = 5e-3,
-        scale_factor::Float64 = 0.0
+        scale_factor::Float64 = 0.0,
+        tol = 1E-7,
+        maxiter = 30,
+        
 )
     #=
     This function allows to either specify the GPS coordinates of where the fault occurs or the ID of the generator.
@@ -32,19 +35,19 @@ function disc_dynamics(
         faultid = tmp[1]
     end
     # Data preperation
-    Nbus = length(dm.load)
-    is_producing = dm.gen .> 0
-    id_gen = dm.idgen[is_producing]
+    Nbus = dm.Nbus
+    is_producing = dm.p_gen .> 0
+    id_gen = dm.id_gen[is_producing]
     id_load = setdiff(1:Nbus, id_gen)
     ng = length(id_gen)
     nl = length(id_load)
-    g = zeros(Nbus)
-    g[dm.idgen] .= dm.gen
-    p = -dm.load + g
+    p_gen = zeros(Nbus)
+    p_gen[dm.id_gen] .= dm.p_gen
+    p = p_gen - dm.p_load
     p .-= sum(p) / Nbus
-    edges = Int64.(zeros(size(dm.idb)))
-    line_start = dm.idb[:, 1]
-    line_end = dm.idb[:, 2]
+    edges = Int64.(zeros(size(dm.id_line)))
+    line_start = dm.id_line[:, 1]
+    line_end = dm.id_line[:, 2]
     # bus reordering: generator buses first 
     for i in 1:ng
         edges[line_start .== id_gen[i], 1] .= i
@@ -54,20 +57,20 @@ function disc_dynamics(
         edges[line_start .== id_load[i], 1] .= i + ng
         edges[line_end .== id_load[i], 2] .= i + ng
     end
-    nline = size(dm.idb,1)
+    nline = dm.Nline
     id = edges
     inc = sparse([id[:,1]; id[:,2]], [1:nline; 1:nline], [-ones(nline);ones(nline)])
 
     # set initial conditions
-    mg = dm.mg[is_producing]
-    dg = dm.dg[is_producing]
-    dg += dm.dl[id_gen]
-    dl = dm.dl[id_load]
+    mg = dm.m_gen[is_producing]
+    dg = dm.d_gen[is_producing]
+    dg += dm.d_load[id_gen]
+    dl = dm.d_load[id_load]
     pg = p[id_gen]
     pl = p[id_load]
     p = [pg; pl]
     # get the stable solution
-    b2 = - im .* dm.bline
+    b2 = - im .* dm.b
     Ybus = conj(inc * sparse(1:nline, 1:nline, b2) * inc')
     q = zeros(Nbus)
     V = ones(Nbus)
@@ -81,9 +84,9 @@ function disc_dynamics(
     omegas = zeros(ng, Int64.(floor(Ndt / interval))+1)
     k = 1
     dp = zeros(ng)
-    dp[faultid] = -9.0
+    dp[faultid] = dP
     for i in 1:Ndt
-        y = radau5(og, thg, thl, mg, dg, dl, pg+dp, pl, inc, dm.bline, dt, maxiter = 14, tol = 1E-6)
+        y = radau5(og, thg, thl, mg, dg, dl, pg+dp, pl, inc, dm.b, dt, maxiter = maxiter, tol = tol)
         if(mod(i, interval) == 0)
             println(i, " / ", Ndt, " (", floor(100*i/Ndt), "%)")
                 omegas[:, k+1] = y[1 : ng]
@@ -98,19 +101,19 @@ function disc_dynamics(
 end
 
 function radau5(
-    og::Array{Float64, 1},
-    thg::Array{Float64, 1},
-    thl::Array{Float64, 1},
-    mg::Array{Float64, 1},
-    dg::Array{Float64, 1},
-    dl::Array{Float64, 1},
-    pg::Array{Float64, 1},
-    pl::Array{Float64, 1},
+    og::Vector{Float64},
+    thg::Vector{Float64},
+    thl::Vector{Float64},
+    mg::Vector{Float64},
+    dg::Vector{Float64},
+    dl::Vector{Float64},
+    pg::Vector{Float64},
+    pl::Vector{Float64},
     incidence_mat::SparseMatrixCSC{Float64, Int64},
-    line_susceptance::Array{Float64, 1},
+    line_susceptance::Vector{Float64},
     dt::Float64 = 0.0001;
-    maxiter::Int64 = 14,
-    tol::Float64 = 1E-6
+    maxiter::Int64 = 30,
+    tol::Float64 = 1E-7
 )
 
     #=
@@ -249,3 +252,65 @@ end
 
 
 
+function get_discrete_id(
+    grid_coord::Array{Float64,2},
+    disc_coord::Array{Float64,2},
+)
+    ids = Int64.(zeros(size(disc_coord,1)))
+    for i in 1:size(ids,1)
+        ids[i] = argmin((grid_coord[:,1] .- disc_coord[i,1]).^2 +
+        (grid_coord[:,2] .- disc_coord[i,2]).^2)
+    end
+
+    return ids
+end
+
+
+function get_discrete_values(
+    ids::Vector{Int64},
+    v::Vector{Float64}
+)
+    return [v[ids[i]] for i = 1:length(ids)]
+end
+
+
+function get_discrete_values(
+    grid_coord::Matrix{Float64},
+    disc_coord::Matrix{Float64},
+    v::Vector{Float64}
+)
+    disc_v = zeros(size(disc_coord,1))
+    for i in 1:size(disc_v,1)
+        id = argmin((grid_coord[:,1] .- disc_coord[i,1]).^2 +
+        (grid_coord[:,2] .- disc_coord[i,2]).^2)
+        disc_v[i] = disc_v[i] + v[id] # changed to avoid "Mutating arrays is not supported"
+    end
+    return disc_v
+end
+
+
+function find_gen(
+    dm::DiscModel,
+    gps_coord::Array{Float64, 2},
+    dP::Float64;
+    scale_factor::Float64 = 1.0
+)
+    #find the the nearest generator that can "withstand" a dP fault
+    coord = albers_projection(gps_coord[:,[2;1]] ./ (180 / pi) )
+    coord = coord[:,[2,1]] / scale_factor
+    idprod = findall((dm.gen .> 0.0))
+    idavail = findall(dm.max_gen[idprod] .> dP) # find id large gens in the prod list
+    # println(size(idprod))
+    # println(idavail)
+    #idprod = findall((dm.gen .> 0.0))
+    id = Int64.(zeros(size(coord,1)))  # index in the full gen list
+    id2 = Int64.(zeros(size(coord,1))) # index in the producing gen list
+    for i in 1:size(coord,1)
+        temp = dm.idgen[idprod[idavail]]
+        id[i] = idprod[idavail[argmin((dm.coord[temp,1] .- coord[i,1]).^2 +
+            (dm.coord[temp,2] .- coord[i,2]).^2)]]
+        id2[i] = idavail[argmin((dm.coord[temp,1] .- coord[i,1]).^2 +
+            (dm.coord[temp,2] .- coord[i,2]).^2)]
+    end
+    return id, id2
+end

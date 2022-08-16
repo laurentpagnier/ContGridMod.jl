@@ -156,3 +156,16 @@ function get_lattice_mesh(
         sum(isgrid),
     )
 end
+
+
+function find_node(
+    m::Mesh,
+    coord::Array{Float64, 2}
+)
+    id = Int64.(zeros(size(coord,1))) # index in the full gen list
+    for i in 1:size(coord,1)
+        id[i] = argmin((m.coord[:,1] .- coord[i,1]).^2 +
+            (m.coord[:,2] .- coord[i,2]).^2)
+    end
+    return id
+end
