@@ -12,7 +12,7 @@ mutable struct DiscModel
     d_load::Vector{Float64}
     id_line::Matrix{Int64} # list of indices
     b::Vector{Float64} # susceptance
-    p_load::Vector{Float64} 
+    p_load::Vector{Float64}
     th::Vector{Float64}
     p_gen::Vector{Float64}
     max_gen::Vector{Float64}
