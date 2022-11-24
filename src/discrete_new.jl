@@ -7,25 +7,24 @@ export find_gen, find_node, find_node2, NRsolver, disc_dynamics
 
 function disc_dynamics(
     dm::DiscModel,
-    tstart::Float64,
-    tend::Float64,
-    delta_p::Union{Float64,Array{Float64,1}};
-    faultid::Int64=0,
-    coords::Array{Float64,2}=[NaN NaN],
-    dt::Float64=1e-2,  # Distance of time steps at which the solution is returned
-    scale_factor::Float64=0.0,
-    tol::Float64=1e-10,  # Target tolerance for the Newtoon-Raphson solver
-    maxiter::Int64=30,  # Maximum iteration for the Newton-Raphson solver
-    dmin::Float64=1e-4,  # Minimum amount of damping for load buses
-    reorder::Bool=false,  # Whether the results will be reorder such that the generators are first 
+    tstart::Number,
+    tend::Number,
+    delta_p::Union{Float64, Vector{Float64}};
+    faultid::Int64 = 0,
+    coords::Matrix{Float64} = [NaN NaN],
+    dt::Float64 = 1e-2,  # Distance of time steps at which the solution is returned
+    scale_factor::Float64 = 0.0,
+    tol::Float64 = 1e-10,  # Target tolerance for the Newtoon-Raphson solver
+    maxiter::Int64 = 30,  # Maximum iteration for the Newton-Raphson solver
     alg=TRBDF2(),  # The solver that is passed to the solve function
-    solve_kwargs::Dict=Dict()  # Keyword arguments to the solve function
+    solve_kwargs::Dict = Dict()  # Keyword arguments to the solve function
 )
     #=
     This function allows to either specify the GPS coordinates of where the fault occurs or the ID of the generator.
     If both are given the ID will be used. If the GPS coordinates are given, the scale_factor must be given.
     Alternatively, an array of size dm.Nbus can be provided which specifies the change in power for each node.
     =#
+    
     if (faultid == 0 && size(delta_p, 1) != dm.Nbus)
         if (coords == [NaN NaN] || scale_factor == 0.0)
             throw(ErrorException("Either the coordinates or the ID of the faulty generator need to be specified. If the coordinates are given, scale_factor must be specified."))
@@ -45,36 +44,19 @@ function disc_dynamics(
     p_gen[dm.id_gen] .= dm.p_gen
     p = p_gen - dm.p_load
     p .-= sum(p) / Nbus
-    edges = Int64.(zeros(size(dm.id_line)))
-    line_start = dm.id_line[:, 1]
-    line_end = dm.id_line[:, 2]
 
-    # bus reordering: generator buses first 
-    for i in 1:ng
-        edges[line_start.==id_gen[i], 1] .= i
-        edges[line_end.==id_gen[i], 2] .= i
-    end
-    for i in 1:nl
-        edges[line_start.==id_load[i], 1] .= i + ng
-        edges[line_end.==id_load[i], 2] .= i + ng
-    end
+
     nline = dm.Nline
-    inc = sparse([edges[:, 1]; edges[:, 2]], [1:nline; 1:nline], [-ones(nline); ones(nline)])
+    inc = sparse([dm.id_line[:, 1]; dm.id_line[:, 2]], [1:nline; 1:nline], [-ones(nline); ones(nline)])
 
     # create arrays of dynamical parameters
     mg = dm.m_gen[is_producing]
     dg = dm.d_gen[is_producing] + dm.d_load[id_gen]
     dl = max.(dm.d_load[id_load], dmin)
-    pg = p[id_gen]
-    pl = p[id_load]
-    p = [pg; pl]
 
     # get the stable solution
-    Ybus = -im * inc * sparse(1:nline, 1:nline, dm.b) * inc'
-    q = zeros(Nbus)
-    V = ones(Nbus)
-    theta = zeros(Nbus)
-    V, theta, ~ = NRsolver(Ybus, V, theta, p, q, Array{Int64,1}([]), 1, tol=tol, maxiter=maxiter)
+    theta, _ = compute_phases(dm.b, dm.id_line, pref, theta = dm.th,
+        id_slack = 1, tol = 1E-6, maxiter = 14)
 
     # preparations for dynamical simulation
     if (faultid != 0)
@@ -83,95 +65,77 @@ function disc_dynamics(
     else
         dp = delta_p
     end
-    ix = [Nbus+1:Nbus+ng; ng+1:Nbus]
-    mass = 1 ./ [ones(ng); dl; mg]
+
+    temp = ones(Nbus)
+    temp[id_load] = dl
+    mass = [temp; mg]
     u0 = [theta; zeros(ng)]
     tspan = (tstart, tend)
-
-    function swing!(du, u, para, t)
-        du[1:ng] = u[Nbus+1:end]
-        du[ix] = p + dp - inc * ((dm.b .* sin.(inc' * u[1:Nbus])))
-        du[Nbus+1:end] -= dg .* u[Nbus+1:end]
-        du .*= mass
+    function swing!(du, u, param, t)
+        # u[[1:Nbus] phases
+        # u[Nbus+1:end] generator freqs.
+        dpe = p + dp + inc * ((dm.b .* sin.(inc' * u[1:Nbus])))
+        du[id_gen] = u[Nbus+1:end]
+        du[id_load] = dpe[id_load]
+        du[Nbus+1:end] = dpe[id_gen] - dg .* u[Nbus+1:end]
+        du ./= mass
     end
 
-    function jacobian!(J, u, p, t)
-        J0 = -inc * ((dm.b .* cos.(inc' * u[1:Nbus])) .* inc')
-        J[:, :] = [spzeros(ng, Nbus) sparse(1.0I, ng, ng); J0[ng+1:end, 1:ng] J0[ng+1:Nbus, ng+1:Nbus] spzeros(nl, ng); J0[1:ng, 1:ng] J0[1:ng, ng+1:Nbus] -dg.*sparse(1.0I, ng, ng)]
-        J[:, :] = mass .* J
+    function jacobian!(J, u, param, t)
+        J0 = inc * ((dm.b .* cos.(inc' * u[1:Nbus])) .* inc')
+        J[id_load, :] = [J0[id_load,:] spzeros(nl,ng)] ./ dl
+        J[id_gen, :] = [spzeros(ng,Nbus) sparse(1:ng, 1:ng, ones(ng))]
+        J[Nbus+1:end, :] = [J0[id_gen,:] -sparse(1:ng, 1:ng, dg)] ./ mg
     end
 
     # save the frequencies at the predefined time steps
     saved_values = SavedValues(Float64, Vector{Float64})
-    tt = tstart:dt:tend
-    cb = SavingCallback((u, t, integrator) -> [u[Nbus+1:end]; integrator(t, Val{1}, idxs=ng+1:Nbus)], saved_values, saveat=tt)
-
+    cb = SavingCallback((u, t, integrator) -> integrator(t, Val{1},
+        idxs = 1:Nbus), saved_values, saveat = tt)
+        
     # solve the swing equations
     func = ODEFunction(swing!, jac=jacobian!)
-    prob = ODEProblem(func, u0, tspan)
-    @time solve(prob, alg, tstops=tt, callback=cb; solve_kwargs...)
-    vals = reduce(hcat, saved_values.saveval)'
+    prob = ODEProblem(func, u0, tspan, tstops = tt, callback=cb)
+    solve(prob, TRBDF2())
+    omega = [saved_values.saveval[i][j] for i=1:length(saved_values.saveval), j=1:Nbus]
 
-    # get ids to reorder for return values 
-    re_id = Array(1:Nbus)
-    if !reorder
-        for (i, j) in enumerate(id_gen)
-            re_id[j] = i
-        end
-        for (i, j) in enumerate(id_load)
-            re_id[j] = i + ng
-        end
-    end
-    return saved_values.t, vals[:, re_id]
+    return saved_values.t, omega
 end
 
 
-function NRsolver(
-    Ybus::SparseMatrixCSC{ComplexF64,Int64},
-    V::Array{Float64,1},
-    theta::Array{Float64,1},
-    p::Array{Float64,1},
-    q::Array{Float64,1},
-    idpq::Array{Int64,1},
-    id_slack::Int64;
-    tol::Float64=1E-6,
-    maxiter::Int64=14
+function compute_phases(
+    b::Vector{Float64},
+    line_ids::Matrix{Int64},
+    pref::Vector{Float64};
+    theta::Vector{Float64} = Float64[],
+    id_slack::Int64 = 1,
+    tol::Float64 = 1E-6,
+    maxiter::Int64 = 14,
 )
-    #=
-    This method is adapted from its version on the
-    Pantagruel repository (https://doi.org/10.5281/zenodo.2642175).
-    For information on solving the power flow equations with 
-    Newton-Raphson, see, for instance,
-    V. Vittal and A. Bergen, Power systems analysis,
-    Prentice Hall, 1999.
-    =#
-    nb = size(Ybus, 1)
+    nb = maximum(line_ids)
+    theta = isempty(theta) ? zeros(nb) : theta
+    
+    id = setdiff(1:nb, id_slack)
+    nl = size(line_ids, 1)
+    
+    inc = sparse([line_ids[:,1]; line_ids[:,2]], [1:nl; 1:nl],
+        [-ones(nl); ones(nl)])
+
     error = 2 * tol
     iter = 0
-    id = [1:id_slack-1; id_slack+1:nb]
     while (error > tol && iter < maxiter)
-        Vc = V .* exp.(im * theta)
-        S = Vc .* conj(Ybus * Vc)
-        dPQ = [real(S[id]) - p[id]; imag(S[idpq]) - q[idpq]]
-        dsdth = -im * sparse(1:nb, 1:nb, Vc) * conj(Ybus) * sparse(1:nb, 1:nb, conj(Vc)) +
-                im * sparse(1:nb, 1:nb, Vc .* conj(Ybus * Vc))
-        dsdv = sparse(1:nb, 1:nb, Vc) * conj(Ybus) * sparse(1:nb, 1:nb, exp.(-im * theta)) +
-               sparse(1:nb, 1:nb, exp.(im * theta) .* conj(Ybus * Vc))
-        J = [real(dsdth[id, id]) real(dsdv[id, idpq]); imag(dsdth[idpq, id]) imag(dsdv[idpq, idpq])]
-        x = J \ dPQ
-        theta[id] = theta[id] - x[1:nb-1]
-        if (!isempty(idpq))
-            V[idpq] -= x[n:end]
-        end
-        error = maximum(abs.(dPQ))
+        pe = -inc * (b .* sin.(inc' * theta))
+        dp = pe - pref 
+        v = b .* cos.(inc' * theta)
+        J = inc * (v .* inc')
+        x = J[id,id] \ dp[id]
+        theta[id] += x
+        error = maximum(abs.(dp))
         iter += 1
     end
-    if (iter == maxiter)
-        println("Max iteration reached, error: ", error)
-    end
-    return V, theta, iter
+    iter == maxiter ? println("Max iteration reached, error: ", error) : nothing
+    return theta, iter
 end
-
 
 
 function get_discrete_id(
@@ -238,7 +202,6 @@ function find_gen(
 end
 
 
-
 function load_discrete_model(
     dataname::String,
     scaling_factor::Float64
@@ -254,7 +217,7 @@ function load_discrete_model(
         coord,
         vec(data["load_freq_coef"]),
         Int64.(data["branch"][:, 1:2]),
-        1.0 ./ data["branch"][:, 4],
+        -1.0 ./ data["branch"][:, 4],
         vec(data["bus"][:, 3]) / 100.0,
         vec(data["bus"][:, 9]) / 180.0 * pi,
         vec(data["gen"][:, 2]) / 100.0,
@@ -265,3 +228,4 @@ function load_discrete_model(
         )
     return dm
 end
+

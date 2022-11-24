@@ -1,4 +1,4 @@
-export get_params, load_discrete_model, update_model!, update_model_dm!
+export get_params, update_model!, update_model_dm!
 
 using HDF5
 using Plots
@@ -11,7 +11,7 @@ function uniform_param(
     dataname::String,
 )
 
-    dm = load_discrete_model(dataname, scale_factor)
+    dm = load_discrete_model(dataname, mesh.scale_factor)
     
     N = size(mesh.coord, 1)
     
@@ -195,34 +195,6 @@ function heat_diff(
     end
 
     return q
-end
-
-
-function load_discrete_model(
-    dataname::String,
-    scaling_factor::Float64
-)
-    data = h5read(dataname, "/")
-    coord = albers_projection( data["bus_coord"] ./ (180 / pi) )
-    coord ./= scaling_factor
-    dm = DiscModel(
-        vec(data["gen_inertia"]),
-        vec(data["gen_prim_ctrl"]),
-        Int64.(vec(data["gen"][:, 1])),
-        findall(vec(data["bus"][:, 2]) .== 3)[1],
-        coord,
-        vec(data["load_freq_coef"]),
-        Int64.(data["branch"][:, 1:2]),
-        1.0 ./ data["branch"][:, 4],
-        vec(data["bus"][:, 3]) / 100.0,
-        vec(data["bus"][:, 9]) / 180.0 * pi,
-        vec(data["gen"][:, 2]) / 100.0,
-        vec(data["gen"][:, 9]) / 100.0,
-        size(data["bus"], 1),
-        size(data["gen"], 1),
-        size(data["branch"], 1),
-        )
-    return dm
 end
 
 
