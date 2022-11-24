@@ -15,8 +15,8 @@ function uniform_param(
     
     N = size(mesh.coord, 1)
     
-    inertia = sum(dm.m_gen)
-    damping = sum(dm.d_load) + sum(dm.d_gen) 
+    inertia = sum(dm.m_gen[dm.p_gen .> 0])
+    damping = sum(dm.d_load) + sum(dm.d_gen[dm.p_gen .> 0]) 
     
     m = inertia / (N * mesh.dx^2)
     d = damping / (N * mesh.dx^2)
@@ -139,8 +139,8 @@ function get_params(
     
     # ensure that the integrals of the different quantities over
     # the medium is equivalent to their sum over the discrete model
-    m = (sum(dm.m_gen) / sum(m) /mesh.dx^2) .* m 
-    d = ((sum(dm.d_gen) + sum(dm.d_load)) / sum(d) / mesh.dx^2) .* d
+    m = (sum(dm.m_gen[dm.p_gen .> 0]) / sum(m) /mesh.dx^2) .* m 
+    d = ((sum(dm.d_gen[dm.p_gen .> 0]) + sum(dm.d_load)) / sum(d) / mesh.dx^2) .* d
     pl = (sum(dm.p_load) / sum(pl) / mesh.dx^2) .* pl
     pg = (sum(dm.p_gen) / sum(pg) / mesh.dx^2) .* pg
 
@@ -285,8 +285,8 @@ function update_model_dm!(
     
     # ensure that the integrals of the different quantities over
     # the medium is equivalent to their sum over the discrete model
-    m = (sum(dm.m_gen) / sum(m) / contmod.mesh.dx^2) .* m 
-    d = ((sum(dm.d_gen) + sum(dm.d_load)) / sum(d) / contmod.mesh.dx^2) .* d
+    m = (sum(dm.m_gen[dm.p_gen .> 0]) / sum(m) / contmod.mesh.dx^2) .* m 
+    d = ((sum(dm.d_gen[dm.p_gen .> 0]) + sum(dm.d_load)) / sum(d) / contmod.mesh.dx^2) .* d
     pl = (sum(dm.p_load) / sum(pl) / contmod.mesh.dx^2) .* pl
     pg = (sum(dm.p_gen) / sum(pg) / contmod.mesh.dx^2) .* pg
 
