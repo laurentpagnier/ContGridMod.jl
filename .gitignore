@@ -12,3 +12,5 @@ notebooks/tmp.gif
 *.bib
 .history/
 plotutil/
+docs/create*
+docs/learn*
