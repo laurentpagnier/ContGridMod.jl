@@ -100,14 +100,18 @@ function disc_dynamics(
         J[:, :] = [spzeros(ng, Nbus) sparse(1.0I, ng, ng); J0[ng+1:end, 1:ng] J0[ng+1:Nbus, ng+1:Nbus] spzeros(nl, ng); J0[1:ng, 1:ng] J0[1:ng, ng+1:Nbus] -dg.*sparse(1.0I, ng, ng)]
         J[:, :] = mass .* J
     end
-
+    jac_proto = spzeros(Nbus + ng, Nbus + ng)
+    jacobian!(jac_proto, ones(Nbus + ng), 0, 0)
+    for i=1:Nbus + ng
+        jac_proto[i, i] += 1
+    end
     # save the frequencies at the predefined time steps
     saved_values = SavedValues(Float64, Vector{Float64})
     tt = tstart:dt:tend
     cb = SavingCallback((u, t, integrator) -> [u[Nbus+1:end]; integrator(t, Val{1}, idxs=ng+1:Nbus)], saved_values, saveat=tt)
 
     # solve the swing equations
-    func = ODEFunction(swing!, jac=jacobian!)
+    func = ODEFunction(swing!, jac=jacobian!, jac_prototype=jac_proto)
     prob = ODEProblem(func, u0, tspan)
     solve(prob, alg, tstops=tt, callback=cb; solve_kwargs...)
     vals = reduce(hcat, saved_values.saveval)'
