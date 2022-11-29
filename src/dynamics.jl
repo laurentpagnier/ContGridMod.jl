@@ -1,290 +1,190 @@
-export perform_dyn_sim, perform_dyn_sim_backward_euler, perform_dyn_sim_crank_nicolson, perform_dyn_sim_forward, perform_dyn_sim_runge_kutta
+export solve_dynamics
 
 using SparseArrays
 using LinearAlgebra
-using IterativeSolvers
+using DifferentialEquations
 
-function perform_dyn_sim(
-    contmod::ContModel;
-    interval::Int64,
-    Ndt::Int64,
-    dt::Float64,
-    method::String="crank-nicolson"
+function solve_dynamics(
+    contmod::ContGridMod.ContModel,
+    tspan::Tuple{Number, Number}; 
+    dt::Float64 = 1e-2, # Distance of time steps at which the solution is returned
+    alg = TRBDF2(),  # The solver that is passed to the solve function
+    solve_kwargs::Dict = Dict(),  # Keyword arguments to the solve function
 )
 
-    if(method == "crank-nicolson" || method == "cn")
-        return ts, thetas, omegas = perform_dyn_sim_crank_nicolson(
-            contmod; interval, Ndt, dt)  
-    elseif(method == "backward-euler" || method == "be")
-        return ts, thetas, omegas = perform_dyn_sim_backward_euler(
-            contmod; interval, Ndt, dt)  
-    elseif(method == "runge-kutta" || method == "rk")
-        return ts, thetas, omegas = perform_dyn_sim_runge_kutta(
-            contmod; interval, Ndt, dt)  
-    elseif(method == "forward" || method == "cf")
-        return ts, thetas, omegas = perform_dyn_sim_forward(
-            contmod; interval, Ndt, dt)
+    # get the stable solution
+    compute_stable_sol!(contmod)
+
+    # preparations for dynamical simulation
+    Nnode = contmod.mesh.Nnode
+    nline = contmod.mesh.Nedge
+    temp = to_mat(contmod.mesh.edge_list)
+    inc = sparse([temp[:, 1]; temp[:, 2]], [1:nline; 1:nline], [-ones(nline); ones(nline)])
+    u0 = [contmod.th; zeros(Nnode)]
+    
+    function lin_dyn!(du, u, param, t)
+        dpe = contmod.p + contmod.dp - inc * (contmod.b .* (inc' * u[1:Nnode]))
+        du[1:Nnode] = u[Nnode+1:end]
+        du[Nnode+1:end] = (dpe - contmod.d .* u[Nnode+1:end]) ./ contmod.m
+    end
+
+    function jacobian!(J, u, param, t)
+        J0 = inc * (-contmod.b .* inc')
+        J[:, :] =  [spzeros(Nnode,Nnode) sparse(1:Nnode, 1:Nnode, ones(Nnode));
+            J0 ./ contmod.m  sparse(1:Nnode, 1:Nnode, -contmod.d./contmod.m)]
+    end
+
+    jac_proto = spzeros(2*Nnode, 2*Nnode)
+    jacobian!(jac_proto, ones(2*Nnode), [], 0.0)
+    for i=1:2*Nnode
+        jac_proto[i, i] += 1
+    end
+
+    # save the frequencies at the predefined time steps
+    saved_values = SavedValues(Float64, Vector{Float64})
+    tt = tspan[1]:dt:tspan[2]
+    cb = SavingCallback((u, t, integrator) -> u[Nnode+1:end], saved_values, saveat = tt)
+        
+    # integrate dynamics
+    func = ODEFunction(lin_dyn!, jac = jacobian!, jac_prototype = jac_proto)
+    prob = ODEProblem(func, u0, tspan, tstops = tt, callback=cb)
+    solve(prob, alg)
+    omega = [saved_values.saveval[i][j] for i=1:length(saved_values.saveval), j=1:Nnode]
+
+    return saved_values.t, omega
+end
+
+
+function solve_dynamics(
+    dm::ContGridMod.DiscModel,
+    tspan::Tuple{Real, Real},
+    delta_p::Union{Float64, Vector{Float64}};
+    faultid::Int64 = 0,
+    coords::Matrix{Float64} = [NaN NaN],
+    dt::Float64 = 1e-2,  # Distance of time steps at which the solution is returned
+    scale_factor::Float64 = 0.0,
+    tol::Float64 = 1e-10,  # Target tolerance for the Newtoon-Raphson solver
+    maxiter::Int64 = 30,  # Maximum iteration for the Newton-Raphson solver
+    alg=TRBDF2(),  # The solver that is passed to the solve function
+    solve_kwargs::Dict = Dict(),  # Keyword arguments to the solve function
+    dmin = 0.0001,
+)
+    #=
+    This function allows to either specify the GPS coordinates of where the fault occurs or the ID of the generator.
+    If both are given the ID will be used. If the GPS coordinates are given, the scale_factor must be given.
+    Alternatively, an array of size dm.Nbus can be provided which specifies the change in power for each node.
+    =#
+    
+    if (faultid == 0 && size(delta_p, 1) != dm.Nbus)
+        if (coords == [NaN NaN] || scale_factor == 0.0)
+            throw(ErrorException("Either the coordinates or the ID of the faulty generator need to be specified. If the coordinates are given, scale_factor must be specified."))
+        end
+        ~, tmp = find_gen(dm, coords, dP, scale_factor=scale_factor)
+        faultid = tmp[1]
+    end
+
+    # Data preperation
+    Nbus = dm.Nbus
+    is_producing = dm.p_gen .> 0
+    id_gen = dm.id_gen[is_producing]
+    id_load = setdiff(1:Nbus, id_gen)
+    ng = length(id_gen)
+    nl = length(id_load)
+    p_gen = zeros(Nbus)
+    p_gen[dm.id_gen] .= dm.p_gen
+    p = p_gen - dm.p_load
+    p .-= sum(p) / Nbus
+
+
+    nline = dm.Nline
+    temp = to_mat(dm.line_list)
+    inc = sparse([temp[:, 1]; temp[:, 2]], [1:nline; 1:nline], [-ones(nline); ones(nline)])
+
+    # create arrays of dynamical parameters
+    mg = dm.m_gen[is_producing]
+    dg = dm.d_gen[is_producing] + dm.d_load[id_gen]
+    dl = max.(dm.d_load[id_load], dmin)
+
+    # get the stable solution
+    theta, _ = ContGridMod.compute_phases(dm.b, inc, p, theta = dm.th,
+        id_slack = 1, tol = 1E-6, maxiter = 14)
+
+    # preparations for dynamical simulation
+    if (faultid != 0)
+        dp = zeros(Nbus)
+        dp[faultid] = delta_p
     else
-        println("Method not found, '", method, "' is not implemented.")
+        dp = delta_p
     end
 
+    temp = ones(Nbus)
+    temp[id_load] = dl
+    mass = [temp; mg]
+    u0 = [theta; zeros(ng)]
+    function swing!(du, u, param, t)
+        # u[[1:Nbus] phases
+        # u[Nbus+1:end] generator freqs.
+        dpe = p + dp + inc * ((dm.b .* sin.(inc' * u[1:Nbus])))
+        du[id_gen] = u[Nbus+1:end]
+        du[id_load] = dpe[id_load]
+        du[Nbus+1:end] = dpe[id_gen] - dg .* u[Nbus+1:end]
+        du ./= mass
+    end
+
+    function jacobian!(J, u, param, t)
+        J0 = inc * ((dm.b .* cos.(inc' * u[1:Nbus])) .* inc')
+        J[id_load, :] = [J0[id_load,:] spzeros(nl,ng)] ./ dl
+        J[id_gen, :] = [spzeros(ng,Nbus) sparse(1:ng, 1:ng, ones(ng))]
+        J[Nbus+1:end, :] = [J0[id_gen,:] -sparse(1:ng, 1:ng, dg)] ./ mg
+    end
+
+    jac_proto = spzeros(Nbus + ng, Nbus + ng)
+    jacobian!(jac_proto, ones(Nbus + ng), 0, 0)
+    for i=1:Nbus + ng
+        jac_proto[i, i] += 1
+    end
+    
+    # save the frequencies at the predefined time steps
+    tt = tspan[1]:dt:tspan[2]
+    saved_values = SavedValues(Float64, Vector{Float64})
+    cb = SavingCallback((u, t, integrator) -> integrator(t, Val{1},
+        idxs = 1:Nbus), saved_values, saveat = tt)
+        
+    # solve the swing equations
+    func = ODEFunction(swing!, jac=jacobian!, jac_prototype = jac_proto)
+    prob = ODEProblem(func, u0, tspan, tstops = tt, callback=cb)
+    solve(prob, TRBDF2())
+    omega = [saved_values.saveval[i][j] for i=1:length(saved_values.saveval), j=1:Nbus]
+
+    return saved_values.t, omega
 end
 
 
-function perform_dyn_sim_forward(
-    contmod::ContModel;
-    interval::Int64 = 100,
-    Ndt::Int64 = 15000,
-    dt::Float64 = 0.0001
+function compute_phases(
+    b::Vector{Float64},
+    inc::SparseMatrixCSC{Float64, Int64},
+    pref::Vector{Float64};
+    theta::Vector{Float64} = Float64[],
+    id_slack::Int64 = 1,
+    tol::Float64 = 1E-6,
+    maxiter::Int64 = 14,
 )
-    println("Total time: ", dt * Ndt)
-    N = sum(contmod.isgrid)
-    M = 1 + Int64(ceil(Ndt/interval))
-    omegas = zeros(N, M)
-    thetas = zeros(N, M)
-    th_new = zeros(N)
-    ts = zeros(M)
+    theta = isempty(theta) ? zeros(nb) : theta
+    nl, nb = size(inc, 2), size(inc, 1)
+    id = setdiff(1:nb, id_slack)
     
-    th_old = copy(contmod.th[contmod.isgrid])
-    th = copy(contmod.th[contmod.isgrid])
-    omegas[:,1] = zeros(size(th))
-    thetas[:,1] = copy(contmod.th[contmod.isgrid])  
-
-    minv = 1 ./ contmod.m
-    gamma = contmod.d ./ contmod.m
-    Nedge = contmod.mesh.Nedge
-    temp = sparse([contmod.mesh.id_edge[:,1]; contmod.mesh.id_edge[:,2]],
-        [1:Nedge; 1:Nedge], [-ones(Nedge); ones(Nedge)])
-    L = - temp * (contmod.b .* temp')
-
-    chi = 1 ./ (1 .+ gamma*dt/2)
-
-    A = (2 * chi - dt^2/dx^2 * minv)
-    B = (1 .- gamma * dt / 2) .* chi
-    C = dt^2 * chi .* minv .* (contmod.p + contmod.dp)
-    
-    @time begin
-        for t in 1:Ndt
-            th_new = 2 * chi .* th +
-                dt^2 / dx^2 .* minv .* chi .* (L * th) -
-                B .* th_old + C
-            if(mod(t,interval) == 0)
-                omegas[:,Int64(t/interval) + 1] = (th_new - th) / dt
-                thetas[:,Int64(t/interval) + 1] = th_new
-                ts[Int64(t/interval) + 1] = t * dt
-                pprintln("NIter: $t Avg. Omega: $(sum(omegas[:, Int64(t/interval) + 1]) / N)")
-            end
-            th_old = copy(th)
-            th = copy(th_new)
-        end
+    error = 2 * tol
+    iter = 0
+    while (error > tol && iter < maxiter)
+        pe = -inc * (b .* sin.(inc' * theta))
+        dp = pe - pref 
+        v = b .* cos.(inc' * theta)
+        J = inc * (v .* inc')
+        x = J[id,id] \ dp[id]
+        theta[id] += x
+        error = maximum(abs.(dp))
+        iter += 1
     end
-
-    return ts, thetas, omegas
-end
-
-
-function DP54(M::SparseMatrixCSC{Float64, Int64}, x::Vector{Float64}, b::Vector{Float64}; dt=0.001)
-    # Dormand–Prince method
-    a21 = 1.0 / 5.0
-    a31 = 3.0 / 40.0
-    a32 = 9.0 / 40.0
-    a41 = 44.0 /45.0
-    a42 = -56.0 / 15.0
-    a43 = 32.0 / 9.0
-    a51 = 19372.0 / 6561.0
-    a52 = -25360.0 / 2187.0
-    a53 = 64448.0 / 6561.0
-    a54 = -212 / 729.0
-    a61 = 9017.0 / 3168.0
-    a62 = -355.0 /33.0
-    a63 = 46732.0 / 5247.0
-    a64 = 49.0 / 176.0
-    a65 = -5103.0 / 18656.0
-    a71 = 35.0 / 384.0
-    a72 = 0.0
-    a73 = 500.0 / 1113.0
-    a74 = 125.0 / 192.0
-    a75 = -2187.0 / 6784.0
-    a76 = 11.0 / 84.0
-    b11 = 35.0 / 384
-    b12 = 0.0
-    b13 = 500.0 / 1113.0
-    b14 = 125.0 / 192.0
-    b15 = -2187.0 / 6784.0
-    b16 = 11.0 / 84.0
-    b17 = 0.0
-    b21 = 5179.0 / 57600.0
-    b22 = 0.0
-    b23 = 7571.0 / 16695.0
-    b24 = 393.0 / 640.0
-    b25 = -92097 / 339200.0
-    b26 = 187.0 / 2100.0
-    b27 = 1.0 / 40.0
-    
-    k1 = M * x + b
-    k2 = M * (x + dt * a21*k1) + b
-    k3 = M * (x + dt * (a31*k1 + a32*k2)) + b
-    k4 = M * (x + dt * (a41*k1 + a42*k2  + a43*k3)) + b
-    k5 = M * (x + dt * (a51*k1 + a52*k2  + a53*k3 + a54*k4)) + b
-    k6 = M * (x + dt * (a61*k1 + a62*k2  + a63*k3 + a64*k4 + a65*k5)) + b
-    k7 = M * (x + dt * (a71*k1 + a72*k2  + a73*k3 + a74*k4 + a75*k5 + a76*k6)) + b
-    y1 = x + dt * (b11*k1 + b12*k2 + b13*k3 + b14*k4 + b15*k5 + b16*k6 + b17*k7)
-    y2 = x + dt * (b21*k1 + b22*k2 + b23*k3 + b24*k4 + b25*k5 + b26*k6 + b27*k7)
-    return y1, y1 - y2
-end
-
-
-function RK4(M::SparseMatrixCSC{Float64, Int64}, x::Vector{Float64}, b::Vector{Float64}; dt=0.001)
-    k1 = M * x + b
-    k2 = M * (x + dt * k1 / 2.0) + b
-    k3 = M * (x + dt * k2 / 2.0) + b
-    k4 = M * (x + dt * k3) + b
-    y = x + dt / 6.0 * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
-end
-
-
-function perform_dyn_sim_runge_kutta(
-    contmod::ContModel;
-    interval::Int64 = 10,
-    Ndt::Int64 = 1000,
-    dt::Float64 = 0.05
-)
-    println("Total time: ", dt * Ndt)
-    N = contmod.mesh.Nnode
-    M = 1 + Int64(ceil(Ndt/interval))
-    omegas = zeros(N, M)
-    thetas = zeros(N, M)
-    ts = zeros(M)
-    
-    x = [copy(contmod.th); zeros(N)]
-    omegas[:, 1] = zeros(N)
-    thetas[:, 1] = copy(contmod.th)  
-
-    ts = zeros(1 + Int64(ceil(Ndt/interval)))
-
-    Nnode = contmod.mesh.Nnode
-    Nedge = contmod.mesh.Nedge
-    temp = sparse([contmod.mesh.id_edge[:,1]; contmod.mesh.id_edge[:,2]],
-        [1:Nedge; 1:Nedge], [-ones(Nedge); ones(Nedge)])
-    L = temp * (contmod.b .* temp') / contmod.mesh.dx^2
-    
-    minv = 1 ./ contmod.m
-    G = sparse(1:Nnode, 1:Nnode, contmod.d .* minv)
-
-    I = sparse(1:Nnode, 1:Nnode, ones(Nnode))
-
-    A = [spzeros(Nnode,Nnode) I;
-         -minv .* L  -G]
-
-    rhs = [zeros(Nnode); minv .* (contmod.p + contmod.dp)]
-
-    @time begin
-        for t in 1:Ndt
-            x = RK4(A, x, rhs, dt = dt)
-            if mod(t,interval) == 0
-                thetas[:,Int64(t/interval) + 1] = x[1:N]
-                omegas[:,Int64(t/interval) + 1] = x[N+1:end]
-                ts[Int64(t/interval) + 1] = t * dt
-                println("NIter: $t Avg. Omega: $(sum(omegas[:, Int64(t/interval) + 1]) / N)")
-            end
-        end
-    end
-    return ts, thetas, omegas
-end
-
-
-function perform_dyn_sim_crank_nicolson(
-    contmod::ContModel;
-    interval::Int64 = 10,
-    Ndt::Int64 = 1000,
-    dt::Float64 = 0.05
-)
-    println("Total time: ", dt * Ndt)
-    Nnode = contmod.mesh.Nnode
-    Ninterval = 1 + Int64(ceil(Ndt/interval))
-    omegas = zeros(Nnode, Ninterval)
-    thetas = zeros(Nnode, Ninterval)
-    ts = zeros(Ninterval)
-    
-    x = [copy(contmod.th); zeros(Nnode)]
-    omegas[:, 1] = zeros(Nnode)
-    thetas[:, 1] = copy(contmod.th)  
-
-    ts = zeros(1 + Int64(ceil(Ndt/interval)))
-
-    minv = 1 ./ contmod.m
-    gamma = contmod.d ./ contmod.m
-    Nedge = contmod.mesh.Nedge
-    inc_mat = sparse([contmod.mesh.id_edge[:,1]; contmod.mesh.id_edge[:,2]],
-        [1:Nedge; 1:Nedge], [-ones(Nedge); ones(Nedge)])
-    L = inc_mat * (contmod.b .* inc_mat') / contmod.mesh.dx^2
-    G = sparse(1:Nnode, 1:Nnode, gamma)
-    
-    I = sparse(1:Nnode, 1:Nnode, ones(Nnode))
-    A = [I -dt / 2 * I;
-        dt / 2 * minv .* L (I + dt/2 * G)]
-    B = [I  dt / 2 * I;
-         -dt / 2 * minv .* L (I - dt/2 * G)]
-    C = [zeros(Nnode); dt * minv .* (contmod.p + contmod.dp)]
-
-    @time begin
-        for t in 1:Ndt
-            x = A \ (B * x + C) # way slower when dx -> 0
-            #gmres!(x, A , B * x + C)
-            if mod(t,interval) == 0
-                thetas[:,Int64(t/interval) + 1] = x[1:Nnode]
-                omegas[:,Int64(t/interval) + 1] = x[Nnode+1:end]
-                ts[Int64(t/interval) + 1] = t * dt
-                println("NIter: $t Avg. Omega: $(sum(omegas[:, Int64(t/interval) + 1]) / Nnode)")
-            end
-        end
-    end
-    return ts, thetas, omegas
-end
-
-
-function perform_dyn_sim_backward_euler(
-    contmod::ContModel;
-    interval::Int64 = 10,
-    Ndt::Int64 = 1000,
-    dt::Float64 = 0.05
-)
-    println("Total time: ", dt * Ndt)
-    N = contmod.mesh.Nnode
-    M = 1 + Int64(ceil(Ndt/interval))
-    omegas = zeros(N, M)
-    thetas = zeros(N, M)
-    ts = zeros(M)
-    
-    x = [copy(contmod.th); zeros(N)]
-    omegas[:,1] = zeros(N)
-    thetas[:,1] = copy(contmod.th)  
-
-    ts = zeros(1 + Int64(ceil(Ndt/interval)))
-
-    I = sparse(1:N, 1:N, ones(N))
-    minv = 1 ./ contmod.m
-    gamma = contmod.d ./ contmod.m
-    Nedge = contmod.mesh.Nedge
-    inc_mat = sparse([contmod.mesh.id_edge[:,1]; contmod.mesh.id_edge[:,2]],
-        [1:Nedge; 1:Nedge], [-ones(Nedge); ones(Nedge)])
-    L = inc_mat * (contmod.b .* inc_mat') / contmod.mesh.dx^2 
-    
-    A = [I -dt * I;
-        dt * minv .* L (I + dt * sparse(1:N, 1:N, gamma))]
-    B = [zeros(N); dt * minv .* (contmod.p + contmod.dp)]
-
-    @time begin
-        for t in 1:Ndt
-            #x = A \ (x + B)
-            gmres!(x, A , x + B)
-            if(mod(t,interval) == 0)
-                thetas[:,Int64(t/interval) + 1] = x[1:N]
-                omegas[:,Int64(t/interval) + 1] = x[N+1:end]
-                ts[Int64(t/interval) + 1] = t * dt
-                println("NIter: $t Avg. Omega: $(sum(omegas[:, Int64(t/interval) + 1]) / N)")
-            end
-        end
-    end
-    return ts, thetas, omegas
+    iter == maxiter ? println("Max iteration reached, error: ", error) : nothing
+    return theta, iter
 end

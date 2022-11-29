@@ -1,62 +1,79 @@
-export back_to_2d, albers_projection, import_json_numerics, import_border, get_discrete_values, copy_model
+export back_to_2d, albers_projection, import_json_numerics, import_border, get_discrete_values, copy_model, to_mat
 
-function inPolygon(
-    p::Matrix{Float64},
-    poly::Matrix{Float64},
+using HDF5
+
+function in_polygon(
+    point::Vector{Tuple{Float64, Float64}},
+    border_point::Vector{Tuple{Float64, Float64}},
 )
-    N = size(poly, 1)
-    isin = falses(size(p, 1))
-    for k = 1:size(p, 1)
-        j = N
-        for i = 1:N
+    is_in = Bool[]
+    for p in point
+        temp = false
+        prev = border_point[end]
+        for b = border_point
             if (
-                ((poly[i, 2] < p[k, 2]) & (poly[j, 2] >= p[k, 2])) |
-                ((poly[j, 2] < p[k, 2]) & (poly[i, 2] >= p[k, 2]))
+                ((b[2] < p[2]) & (prev[2] >= p[2])) |
+                ((prev[2] < p[2]) & (b[2] >= p[2]))
             )
                 if (
-                    poly[i, 1] +
-                    (p[k, 2] - poly[i, 2]) / (poly[j, 2] - poly[i, 2]) *
-                    (poly[j, 1] - poly[i, 1]) < p[k, 1]
+                    b[1] +
+                    (p[2] - b[2]) / (prev[2] - b[2]) *
+                    (prev[1] - b[1]) < p[1]
                 )
-                    isin[k] = !isin[k]
+                    temp = !temp
                 end
             end
-            j = i
+            prev = b
+        end
+        push!(is_in, temp)
+    end
+    return is_in
+end
+
+to_mat(v) = mapreduce(x->[x[1], x[2]]',vcat, v)
+
+
+function select_observation_points(dm, mesh)
+    id_obs = Int64[]
+    id_obs_cm = Int64[]
+    for (i, v) in enumerate(mesh.cell_vertices)
+        list = findall(ContGridMod.in_polygon(dm.coord, v))
+        if !isempty(list)
+            push!(id_obs, rand(list))
+            push!(id_obs_cm, i)
         end
     end
-    return isin
+    return id_obs, id_obs_cm
 end
 
 
-function copy_model(
-    cm::ContModel
+function find_nearest(
+    p::Tuple{Float64,Float64},
+    ref::Vector{Tuple{Float64,Float64}},
 )
-    keys = fieldnames(ContGridMod.ContModel)
-    data = Tuple(perform_copy(getfield(cm, k)) for k in keys)
-    return ContModel(data...)
-end
-
-
-function copy_mesh(
-    mesh::Mesh
-)
-    keys = fieldnames(Mesh)
-    data = Tuple(copy(getfield(mesh, k)) for k in keys)
-    return Mesh(data...)
-end
-
-
-function perform_copy(field)
-    if typeof(field) == Mesh
-        return copy_mesh(field)
-    else
-        return copy(field)
+    d_min, id = Inf, 0
+    for (i, r) in enumerate(ref)
+        d = (r[1] - p[1])^2 + (r[2] - p[2])^2
+        if d < d_min
+            d_min, id = d, i
+        end
     end
+    return id
+end
+
+
+function find_node_from_gps(
+    contmod::ContModel,
+    gps_coord::Vector{Tuple{Float64, Float64}},
+)
+    coord = albers_projection(to_mat(gps_coord) ./ (180 / pi) )
+    coord = eachrow(coord) .|> c -> (c[1], c[2]) ./ contmod.mesh.scale_factor
+    return coord .|> c-> find_nearest(c, contmod.mesh.node_coord)
 end
 
 
 function albers_projection(
-    coord::Array{Float64,2}; # as latitude, longitude 
+    coord::Matrix{Float64}; # as latitude, longitude 
     lon0::Float64 = 13.37616 / 180 * pi,
     lat0::Float64 = 46.94653 / 180 * pi,
     lat1::Float64 = 10 / 180 * pi,
@@ -76,7 +93,7 @@ end
 
 
 function import_border(
-    filename::String
+    filename::String,
 )
     data = JSON.parsefile(filename)
     N = size(data["border"], 1)
@@ -126,6 +143,63 @@ function import_json_numerics(
 end
 
 
+function load_discrete_model(
+    dataname::String,
+    scaling_factor::Float64
+)
+    data = h5read(dataname, "/")
+    coord = albers_projection( data["bus_coord"] ./ (180 / pi) )
+    coord = eachrow(coord) .|> c -> (c[1], c[2]) ./ scaling_factor
+    line_list = eachrow(data["branch"]) .|> id -> (id[1],id[2])
+    dm = DiscModel(
+        vec(data["gen_inertia"]),
+        vec(data["gen_prim_ctrl"]),
+        Int64.(vec(data["gen"][:, 1])),
+        findall(vec(data["bus"][:, 2]) .== 3)[1],
+        coord,
+        vec(data["load_freq_coef"]),
+        line_list,
+        -1.0 ./ data["branch"][:, 4],
+        vec(data["bus"][:, 3]) / 100.0,
+        vec(data["bus"][:, 9]) / 180.0 * pi,
+        vec(data["gen"][:, 2]) / 100.0,
+        vec(data["gen"][:, 9]) / 100.0,
+        size(data["bus"], 1),
+        size(data["gen"], 1),
+        size(data["branch"], 1),
+        )
+    return dm
+end
+
+
+
+#=
+function copy_model(
+    cm::ContModel
+)
+    keys = fieldnames(ContGridMod.ContModel)
+    data = Tuple(perform_copy(getfield(cm, k)) for k in keys)
+    return ContModel(data...)
+end
+
+
+function copy_mesh(
+    mesh::Mesh
+)
+    keys = fieldnames(Mesh)
+    data = Tuple(copy(getfield(mesh, k)) for k in keys)
+    return Mesh(data...)
+end
+
+
+function perform_copy(field)
+    if typeof(field) == Mesh
+        return copy_mesh(field)
+    else
+        return copy(field)
+    end
+end
+
 function back_to_2d(
     isgrid::BitVector,
     Ny::Int64,
@@ -140,7 +214,6 @@ function back_to_2d(
     end
     return value
 end
-
 
 function get_cont_values(
     isgrid::BitVector,
@@ -182,3 +255,4 @@ function find_node(
 )
     return find_node(cm.mesh, coord)
 end
+=#

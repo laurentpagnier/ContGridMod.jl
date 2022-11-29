@@ -3,29 +3,23 @@ export add_local_disturbance!, add_local_disturbance_with_gps!
 
 function add_local_disturbance!(
     contmod::ContModel,
-    coord::Vector{Float64},
+    coord::Tuple{Float64, Float64},
     dP::Float64,
-    sigma::Float64,
 )
-    grid_coord = contmod.mesh.coord
-    dp = zeros(size(grid_coord,1))
-    for k = 1:size(grid_coord,1)
-        dp[k] = exp(-((grid_coord[k,1] - coord[1])^2 + (grid_coord[k,2] - coord[2])^2) / 2 / sigma^2)
-    end
-    contmod.dp = dP .* dp ./ sum(dp) / contmod.mesh.dx^2
+    id = find_nearest(coord, contmod.mesh.node_coord)
+    contmod.dp[:] .= 0
+    contmod.dp[id] = dP
     nothing
 end
 
 
 function add_local_disturbance_with_gps!(
     contmod::ContModel,
-    gps_coord::Vector{Float64},
+    gps_coord::Tuple{Float64, Float64},
     dP::Float64,
-    sigma::Float64,
 )
-    grid_coord = contmod.mesh.coord
-    coord = albers_projection(reshape(gps_coord,1,2) ./ (180 / pi) )
-    coord ./= contmod.mesh.scale_factor
-    add_local_disturbance!(contmod, vec(coord), dP, sigma)
+    c = albers_projection([gps_coord[1]  gps_coord[2]] ./ (180 / pi) )
+    c ./= contmod.mesh.scale_factor
+    add_local_disturbance!(contmod, (c[1], c[2]), dP)
     nothing
 end

@@ -8,9 +8,9 @@ mutable struct DiscModel
     d_gen::Vector{Float64} # generator damping
     id_gen::Vector{Int64} # generator inertia
     id_slack::Int64 # index of the slack bus
-    coord::Matrix{Float64} # coordinates in 
+    coord::Vector{Tuple{Float64, Float64}} # coordinates in 
     d_load::Vector{Float64}
-    id_line::Matrix{Int64} # list of indices
+    line_list::Vector{Tuple{Int64,Int64}} # list of indices
     b::Vector{Float64} # susceptance
     p_load::Vector{Float64}
     th::Vector{Float64}
@@ -21,17 +21,13 @@ mutable struct DiscModel
     Nline::Int64
 end
 
+
 mutable struct Mesh
-    Nx::Int64
-    Ny::Int64
-    coord::Matrix{Float64}
-    line_coord::Matrix{Float64}
-    id_edge::Matrix{Int64}
-    is_grid::BitVector
-    yrange::Vector{Float64}
-    xrange::Vector{Float64}
-    dx::Float64
-    border::Matrix{Float64}
+    node_coord::Vector{Tuple{Float64,Float64}}
+    edge_list::Vector{Tuple{Int64,Int64}}
+    cell_area::Vector{Float64}
+    cell_vertices::Vector{Vector{Tuple{Float64,Float64}}}
+    border::Vector{Tuple{Float64,Float64}}
     scale_factor::Float64
     Nedge::Int64
     Nnode::Int64
@@ -48,14 +44,14 @@ mutable struct ContModel
     th::Vector{Float64}
 end
 
-include("discrete.jl");
+#include("discrete.jl");
 include("disturbances.jl")
 include("dynamics.jl")
 include("mesh.jl")
 include("params.jl")
 include("plotting.jl")
-include("ps_analysis.jl")
+#include("ps_analysis.jl")
 include("stable.jl")
-include("tools.jl")
+include("utils.jl")
 
 end
