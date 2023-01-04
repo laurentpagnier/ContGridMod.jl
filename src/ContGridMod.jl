@@ -22,6 +22,13 @@ mutable struct DiscModel
 end
 
 
+mutable struct FreqProfile
+    coord::Vector{Tuple{Float64, Float64}}
+    time::Vector{Float64}
+    freq::Vector{Vector{Float64}}
+end
+
+
 mutable struct Mesh
     node_coord::Vector{Tuple{Float64,Float64}}
     edge_list::Vector{Tuple{Int64,Int64}}

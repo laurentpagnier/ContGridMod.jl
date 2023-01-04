@@ -1,4 +1,5 @@
-export back_to_2d, albers_projection, import_json_numerics, import_border, get_discrete_values, copy_model, to_mat
+export back_to_2d, albers_projection, import_json_numerics, import_border,
+    get_discrete_values, copy_model, to_mat, load_discrete_model
 
 using HDF5
 
@@ -147,6 +148,22 @@ function load_discrete_model(
     dataname::String,
     scaling_factor::Float64
 )
+    d = h5read(dataname, "/")
+    line_list = eachrow(d["line_list"]) .|> r -> (r[1], r[2]) 
+    coord = ContGridMod.albers_projection(d["coord"] ./ (180 / pi))
+    coord = eachrow(coord) .|> r -> (r[1], r[2]) ./ scaling_factor
+
+    dm = ContGridMod.DiscModel(d["m_gen"], d["d_gen"], d["id_gen"], d["id_slack"], coord,
+        d["d_load"], line_list, d["b"], vec(d["p_load"]), d["th"],
+        d["p_gen"], d["max_gen"], d["Nbus"], d["Ngen"], d["Nline"])
+    return dm
+end
+
+
+function load_matlab_model(
+    dataname::String,
+    scaling_factor::Float64
+)
     data = h5read(dataname, "/")
     coord = albers_projection( data["bus_coord"] ./ (180 / pi) )
     coord = eachrow(coord) .|> c -> (c[1], c[2]) ./ scaling_factor
@@ -170,89 +187,3 @@ function load_discrete_model(
         )
     return dm
 end
-
-
-
-#=
-function copy_model(
-    cm::ContModel
-)
-    keys = fieldnames(ContGridMod.ContModel)
-    data = Tuple(perform_copy(getfield(cm, k)) for k in keys)
-    return ContModel(data...)
-end
-
-
-function copy_mesh(
-    mesh::Mesh
-)
-    keys = fieldnames(Mesh)
-    data = Tuple(copy(getfield(mesh, k)) for k in keys)
-    return Mesh(data...)
-end
-
-
-function perform_copy(field)
-    if typeof(field) == Mesh
-        return copy_mesh(field)
-    else
-        return copy(field)
-    end
-end
-
-function back_to_2d(
-    isgrid::BitVector,
-    Ny::Int64,
-    Nx::Int64,
-    valueflat::Matrix{Float64},
-)
-    value = zeros(Ny, Nx, size(valueflat, 2))
-    for t in 1:size(valueflat, 2)
-    	temp = zeros(size(isgrid))
-    	temp[isgrid] .= valueflat[:, t]
-        value[:,:, t] = reshape(temp, Ny, Nx)
-    end
-    return value
-end
-
-function get_cont_values(
-    isgrid::BitVector,
-    grid_coord::Array{Float64, 2},
-    disc_coord::Array{Float64, 2},
-    disc_values::Array{Float64, 1}
-)
-    v = zeros(size(grid_coord,1))
-    for i = 1:size(grid_coord, 1)
-        id = argmin((grid_coord[i,1] .- disc_coord[:,1]).^2 +
-            (grid_coord[i,2] .- disc_coord[:,2]).^2)
-        v[i] = disc_values[id]
-    end
-    values = zeros(size(isgrid,1))
-    values[isgrid] = v
-    return values
-end
-
-
-function find_node_from_gps(
-    cm::ContModel,
-    gps_coord::Array{Float64, 2}
-)
-    coord = albers_projection(gps_coord ./ (180 / pi) )
-    coord ./= cm.mesh.scale_factor
-
-    id = Int64.(zeros(size(coord,1))) # index in the full gen list
-    for i in 1:size(coord,1)
-        id[i] = argmin((cm.mesh.coord[:,1] .- coord[i,1]).^2 +
-            (cm.mesh.coord[:,2] .- coord[i,2]).^2)
-    end
-    return id
-end
-
-
-function find_node(
-    cm::ContModel,
-    coord::Array{Float64, 2}
-)
-    return find_node(cm.mesh, coord)
-end
-=#

@@ -1,41 +1,28 @@
-export get_params, update_model!, update_model_dm!
+export get_params, update_model!, update_model_dm!, create_model
 
 using SparseArrays
 
-function get_params(
-    mesh::ContGridMod.Mesh,
-    dataname::String;
+
+function create_model(
+    mesh::ContGridMod.Mesh;
+    filename::String = "",
     m_min::Real = 0.1,
     d_min::Real = 0.1,
     b_min::Real = 50,
-)    
-    # load the discrete model
-    dm = ContGridMod.load_discrete_model(dataname, mesh.scale_factor)
-    m = zeros(mesh.Nnode)
-    d = zeros(mesh.Nnode)
-    pl = zeros(mesh.Nnode)
-    pg = zeros(mesh.Nnode)
+)
+    m = m_min * ones(mesh.Nedge)
+    d = d_min * ones(mesh.Nedge)
+    b = b_min * ones(mesh.Nedge)
+    p = zeros(mesh.Nnode)
     th = zeros(mesh.Nnode)
     dp = zeros(mesh.Nnode)
+    id_slack = 1
     
-    is_prod = dm.p_gen .> 0.0
-    
-    for (i, v) in enumerate(mesh.cell_vertices)
-        is_in = ContGridMod.in_polygon(dm.coord, v)
-        d[i] += sum(dm.d_load[is_in])
-        m[i] += sum(dm.m_gen[is_in[dm.id_gen] .* is_prod])
-        d[i] += sum(dm.d_gen[is_in[dm.id_gen] .* is_prod])
-        pg[i] += sum(dm.p_gen[is_in[dm.id_gen] .* is_prod])
-        pl[i] += sum(dm.p_load[is_in])
+    if filename != ""
+        dm = load_discrete_model(filename, mesh.scale_factor)
+        id_slack, p, dp, b, m, d, th = get_params(mesh, dm,
+            m_min = m_min, d_min = d_min, b_min = b_min)
     end
-    
-    p = pg - pl 
-    p = p .- sum(p) / length(p)
-    m = max.(m, m_min)
-    d = max.(d, d_min)
-    
-    id_slack = find_nearest(dm.coord[dm.id_slack], mesh.node_coord)
-    b = 200 * ones(mesh.Nedge)
     
     return ContGridMod.ContModel(
         mesh,
@@ -47,6 +34,46 @@ function get_params(
         d,
         th,
     )
+end
+
+
+function get_params(
+    mesh::ContGridMod.Mesh,
+    dm::ContGridMod.DiscModel;
+    m_min::Real = 0.1,
+    d_min::Real = 0.1,
+    b_min::Real = 50,
+)    
+    # load the discrete model
+    
+    m = zeros(mesh.Nnode)
+    d = zeros(mesh.Nnode)
+    pl = zeros(mesh.Nnode)
+    pg = zeros(mesh.Nnode)
+    th = zeros(mesh.Nnode)
+    dp = zeros(mesh.Nnode)
+    
+    is_prod = dm.p_gen .> 0.0
+    
+    for (i, v) in enumerate(mesh.cell_vertices)
+        is_in = in_polygon(dm.coord, v)
+        d[i] = sum(dm.d_load[is_in])
+        m[i] = sum(dm.m_gen[is_in[dm.id_gen] .* is_prod])
+        d[i] = sum(dm.d_gen[is_in[dm.id_gen] .* is_prod])
+        pg[i] = sum(dm.p_gen[is_in[dm.id_gen] .* is_prod])
+        pl[i] = sum(dm.p_load[is_in])
+        th[i] = sum(dm.th[is_in]) / sum(is_in)
+    end
+    
+    p = pg - pl 
+    p = p .- sum(p) / length(p)
+    m = max.(m, m_min)
+    d = max.(d, d_min)
+    
+    id_slack = find_nearest(dm.coord[dm.id_slack], mesh.node_coord)
+    b = b_min * ones(mesh.Nedge) # TODO change that
+    
+    return id_slack, p, dp, b, m, d, th
 end
 
 
