@@ -1,5 +1,5 @@
-export back_to_2d, albers_projection, import_json_numerics, import_border,
-    get_discrete_values, copy_model, to_mat, load_discrete_model
+export albers_projection, import_json_numerics, import_border,
+    copy_model, to_mat, load_discrete_model, load_matlab_model
 
 using HDF5
 
