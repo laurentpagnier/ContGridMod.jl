@@ -146,13 +146,18 @@ end
 
 function load_discrete_model(
     dataname::String,
-    scaling_factor::Float64
+    scaling_factor::Float64;
+    gps_coord::Bool = false,
 )
     d = h5read(dataname, "/")
     line_list = eachrow(d["line_list"]) .|> r -> (r[1], r[2]) 
-    coord = ContGridMod.albers_projection(d["coord"] ./ (180 / pi))
-    coord = eachrow(coord) .|> r -> (r[1], r[2]) ./ scaling_factor
-
+    if gps_coord
+        coord = eachrow(d["coord"]) .|> c -> (c[1], c[2]) 
+    else
+        coord = ContGridMod.albers_projection(d["coord"] ./ (180 / pi))
+        coord = eachrow(coord) .|> r -> (r[1], r[2]) ./ scaling_factor
+    end
+    
     dm = ContGridMod.DiscModel(d["m_gen"], d["d_gen"], d["id_gen"], d["id_slack"], coord,
         d["d_load"], line_list, d["b"], vec(d["p_load"]), d["th"],
         d["p_gen"], d["max_gen"], d["Nbus"], d["Ngen"], d["Nline"])

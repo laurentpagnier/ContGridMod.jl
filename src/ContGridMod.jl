@@ -44,20 +44,18 @@ mutable struct ContModel
     mesh::Mesh
     id_slack::Int64
     p::Vector{Float64}
-    dp::Vector{Float64}
+    dp
     b::Vector{Float64}
     m::Vector{Float64}
     d::Vector{Float64}
     th::Vector{Float64}
 end
 
-#include("discrete.jl");
 include("disturbances.jl")
 include("dynamics.jl")
 include("mesh.jl")
-include("params.jl")
-include("plotting.jl")
-#include("ps_analysis.jl")
+include("param.jl")
+include("plot.jl")
 include("stable.jl")
 include("utils.jl")
 

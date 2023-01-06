@@ -23,7 +23,7 @@ function solve_dynamics(
     u0 = [contmod.th; zeros(Nnode)]
     
     function lin_dyn!(du, u, param, t)
-        dpe = contmod.p + contmod.dp - inc * (contmod.b .* (inc' * u[1:Nnode]))
+        dpe = contmod.p + contmod.dp(t) - inc * (contmod.b .* (inc' * u[1:Nnode]))
         du[1:Nnode] = u[Nnode+1:end]
         du[Nnode+1:end] = (dpe - contmod.d .* u[Nnode+1:end]) ./ contmod.m
     end
@@ -58,64 +58,66 @@ end
 function solve_dynamics(
     dm::ContGridMod.DiscModel,
     tspan::Tuple{Real, Real},
-    delta_p::Union{Float64, Vector{Float64}};
-    faultid::Int64 = 0,
-    coords::Matrix{Float64} = [NaN NaN],
+    dp;
     dt::Float64 = 1e-2,  # Distance of time steps at which the solution is returned
-    scale_factor::Float64 = 0.0,
-    tol::Float64 = 1e-10,  # Target tolerance for the Newtoon-Raphson solver
+    tol::Float64 = 1e-8,  # Target tolerance for the Newtoon-Raphson solver
     maxiter::Int64 = 30,  # Maximum iteration for the Newton-Raphson solver
-    alg=TRBDF2(),  # The solver that is passed to the solve function
-    solve_kwargs::Dict = Dict(),  # Keyword arguments to the solve function
-    dmin = 0.0001,
+    alg = TRBDF2(),  # The solver that is passed to the solve function
+    dlmin = 0.0001,
+    dgmin = 0.002,
+    mgmin = 0.001,
 )
-    #=
-    This function allows to either specify the GPS coordinates of where the fault occurs or the ID of the generator.
-    If both are given the ID will be used. If the GPS coordinates are given, the scale_factor must be given.
-    Alternatively, an array of size dm.Nbus can be provided which specifies the change in power for each node.
-    =#
-    
-    if (faultid == 0 && size(delta_p, 1) != dm.Nbus)
-        if (coords == [NaN NaN] || scale_factor == 0.0)
-            throw(ErrorException("Either the coordinates or the ID of the faulty generator need to be specified. If the coordinates are given, scale_factor must be specified."))
-        end
-        ~, tmp = find_gen(dm, coords, dP, scale_factor=scale_factor)
-        faultid = tmp[1]
-    end
 
     # Data preperation
     Nbus = dm.Nbus
-    is_producing = dm.p_gen .> 0
-    id_gen = dm.id_gen[is_producing]
+    
+    id_on = findall(abs.(dm.p_gen) .> 1E-4)
+    temp = dm.id_gen[id_on]
+    id_gen = sort(unique(temp))
     id_load = setdiff(1:Nbus, id_gen)
     ng = length(id_gen)
     nl = length(id_load)
+
+    on2bus = Dict(enumerate(dm.id_gen[id_on]) .|> v -> v[1] => findfirst(id_gen .== v[2]))
+
+    # create arrays of dynamical parameters
+    mg = zeros(ng)
+    dg = zeros(ng)
+    
+    for (i, j) in enumerate(id_on)
+        mg[on2bus[i]] += dm.m_gen[j]
+        dg[on2bus[i]] += dm.d_gen[j]
+    end
+    
+    mg = max.(mg, mgmin)
+    dg = max.(dg, dgmin)
+    dl = max.(dm.d_load[id_load], dlmin)
+    
+    #is_producing = dm.p_gen .> 0
+    #id_gen = dm.id_gen[is_producing]
+    #id_load = setdiff(1:Nbus, id_gen)
+    #ng = length(id_gen)
+    #nl = length(id_load)
     p_gen = zeros(Nbus)
-    p_gen[dm.id_gen] .= dm.p_gen
+    zip(dm.id_gen, dm.p_gen) .|> v -> p_gen[v[1]] += v[2]
     p = p_gen - dm.p_load
     p .-= sum(p) / Nbus
 
-
     nline = dm.Nline
     temp = to_mat(dm.line_list)
-    inc = sparse([temp[:, 1]; temp[:, 2]], [1:nline; 1:nline], [-ones(nline); ones(nline)])
+    inc = sparse([temp[:, 1]; temp[:, 2]],
+        [1:nline; 1:nline], [-ones(nline); ones(nline)])
 
-    # create arrays of dynamical parameters
-    mg = dm.m_gen[is_producing]
-    dg = dm.d_gen[is_producing] + dm.d_load[id_gen]
-    dl = max.(dm.d_load[id_load], dmin)
+    
+    #mg = dm.m_gen[is_producing]
+    #dg = dm.d_gen[is_producing] + dm.d_load[id_gen]
+    #dl = max.(dm.d_load[id_load], dmin)
 
     # get the stable solution
-    theta, _ = ContGridMod.compute_phases(dm.b, inc, p, theta = dm.th,
-        id_slack = 1, tol = 1E-6, maxiter = 14)
+    theta, iter = ContGridMod.compute_phases(dm.b, inc, p,
+        theta = copy(dm.th), id_slack = dm.id_slack,
+        tol = tol, maxiter = maxiter)
 
-    # preparations for dynamical simulation
-    if (faultid != 0)
-        dp = zeros(Nbus)
-        dp[faultid] = delta_p
-    else
-        dp = delta_p
-    end
 
     temp = ones(Nbus)
     temp[id_load] = dl
@@ -124,7 +126,7 @@ function solve_dynamics(
     function swing!(du, u, param, t)
         # u[[1:Nbus] phases
         # u[Nbus+1:end] generator freqs.
-        dpe = p + dp + inc * ((dm.b .* sin.(inc' * u[1:Nbus])))
+        dpe = p + dp(t) + inc * ((dm.b .* sin.(inc' * u[1:Nbus])))
         du[id_gen] = u[Nbus+1:end]
         du[id_load] = dpe[id_load]
         du[Nbus+1:end] = dpe[id_gen] - dg .* u[Nbus+1:end]
@@ -146,17 +148,16 @@ function solve_dynamics(
     
     # save the frequencies at the predefined time steps
     tt = tspan[1]:dt:tspan[2]
-    saved_values = SavedValues(Float64, Vector{Float64})
+    sv = SavedValues(Float64, Vector{Float64})
     cb = SavingCallback((u, t, integrator) -> integrator(t, Val{1},
-        idxs = 1:Nbus), saved_values, saveat = tt)
+        idxs = 1:Nbus), sv, saveat = tt)
         
     # solve the swing equations
-    func = ODEFunction(swing!, jac=jacobian!, jac_prototype = jac_proto)
+    func = ODEFunction(swing!, jac = jacobian!, jac_prototype = jac_proto)
     prob = ODEProblem(func, u0, tspan, tstops = tt, callback=cb)
-    solve(prob, TRBDF2())
-    omega = [saved_values.saveval[i][j] for i=1:length(saved_values.saveval), j=1:Nbus]
+    solve(prob, alg)
 
-    return saved_values.t, omega
+    return sv.t, sv.saveval
 end
 
 
@@ -169,8 +170,8 @@ function compute_phases(
     tol::Float64 = 1E-6,
     maxiter::Int64 = 14,
 )
-    theta = isempty(theta) ? zeros(nb) : theta
     nl, nb = size(inc, 2), size(inc, 1)
+    theta = isempty(theta) ? zeros(nb) : theta
     id = setdiff(1:nb, id_slack)
     
     error = 2 * tol

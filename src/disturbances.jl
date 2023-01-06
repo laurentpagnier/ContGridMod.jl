@@ -4,11 +4,14 @@ export add_local_disturbance!, add_local_disturbance_with_gps!
 function add_local_disturbance!(
     contmod::ContModel,
     coord::Tuple{Float64, Float64},
-    dP::Float64,
+    dP::Float64;
+    tstart::Float64 = 0.0,
 )
     id = find_nearest(coord, contmod.mesh.node_coord)
-    contmod.dp[:] .= 0
-    contmod.dp[id] = dP
+    temp = zeros(contmod.mesh.Nnode)
+    temp[id] = dP
+    dp(t) = temp .* (t .> tstart)
+    contmod.dp = dp
     nothing
 end
 
