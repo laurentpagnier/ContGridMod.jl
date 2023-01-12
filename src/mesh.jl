@@ -5,10 +5,11 @@ using Ferrite, FerriteGmsh, Gmsh
 function get_grid(
     filein::String,
     dx::Float64,
-    fileout::String="",)::Grid
-    border, _ = import_border(filein)
+    fileout::String="",)::Tuple{Grid, Float64}
+
+    border, scale_factor = import_border(filein)
     border = border[1:end-1, :]
-    
+
     # Initialize gmsh
     Gmsh.initialize()
 
@@ -47,7 +48,7 @@ function get_grid(
 
     Gmsh.finalize()
 
-    return grid
+    return grid, scale_factor
 
 end
 

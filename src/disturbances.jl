@@ -1,5 +1,18 @@
 export add_local_disturbance!, add_local_disturbance_with_gps!
 
+function add_local_disturbance!(model::ContModelFer, coord::Vector{Float64}, dP::Real, σ::Real)::Nothing
+    p = zeros(ndofs(model.dh₁))
+    ch = ConstraintHandler(model.dh₁)
+    db = Dirichlet(:u, Set(1:getnnodes(model.grid)), (x, t) -> exponential2D(x, coord, dP, σ))
+    add!(ch, db)
+    close!(ch)
+    update!(ch)
+    apply!(p, ch)
+    normalize_values!(p, dP, model.area, model.grid, model.dh₁, model.cellvalues)
+    model.fault_nodal = p
+    model.fault = x->interpolate(x, model.grid, model.dh₁, p, :u)
+    return nothing
+end
 
 function add_local_disturbance!(
     contmod::ContModel,

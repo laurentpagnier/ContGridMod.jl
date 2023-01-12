@@ -2,6 +2,7 @@ module ContGridMod
 
 using JSON
 using SparseArrays
+using Ferrite
 
 mutable struct DiscModel
     m_gen::Vector{Float64} # generator inertia
@@ -46,6 +47,28 @@ mutable struct ContModel
     m::Vector{Float64}
     d::Vector{Float64}
     th::Vector{Float64}
+end
+
+mutable struct ContModelFer
+    grid::Grid
+    dh₁::DofHandler
+    dh₂::DofHandler
+    cellvalues::CellScalarValues
+    area::Float64
+    m_nodal::Vector{Float64}
+    d_nodal::Vector{Float64}
+    p_nodal::Vector{Float64}
+    bx_nodal::Vector{Float64}
+    by_nodal::Vector{Float64}
+    θ₀_nodal::Vector{Float64}
+    fault_nodal::Vector{Float64}
+    m::Function
+    d::Function
+    p::Function
+    bx::Function
+    by::Function
+    θ₀::Function
+    fault::Function
 end
 
 include("discrete.jl");

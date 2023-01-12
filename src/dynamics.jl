@@ -1,8 +1,140 @@
-export perform_dyn_sim, perform_dyn_sim_backward_euler, perform_dyn_sim_crank_nicolson, perform_dyn_sim_forward, perform_dyn_sim_runge_kutta
+export perform_dyn_sim, perform_dyn_sim_backward_euler, perform_dyn_sim_crank_nicolson, perform_dyn_sim_forward, perform_dyn_sim_runge_kutta, save_simulation
 
 using SparseArrays
 using LinearAlgebra
 using IterativeSolvers
+using Ferrite
+using BlockArrays
+
+
+function save_simulation(model::ContModelFer, sol::DiffEqBase.DESolution, fname::String)::Nothing
+    mkpath(fname)
+    pvd = paraview_collection(fname * ".pvd")
+    for (i, t) in enumerate(sol.t)
+        vtk_grid(fname * "/" * fname * "-$i", model.dh₂) do vtk
+            vtk_point_data(vtk, model.dh₂, sol.u[i])
+            vtk_save(vtk)
+            pvd[t] = vtk
+        end
+    end
+    vtk_save(pvd)
+    return nothing
+end
+
+function perform_dyn_sim(
+    model::ContModelFer,
+    tf::Float64;
+    solver::DiffEqBase.DEAlgorithm =Trapezoid(),
+    saveat::Real=0.01,
+    abstol::Float64=1e-7,
+    reltol::Float64=1e-5,
+)::DiffEqBase.DESolution
+    # Assemble mass matrix, stiffnes matrix, and force vector
+    K = create_sparsity_pattern(model.dh₂)
+    M = create_sparsity_pattern(model.dh₂)
+    f = zeros(ndofs(model.dh₂))
+    K, f = assemble_K!(K, f, model)
+    M = assemble_M!(M, model)
+
+    # Create intiial conditions
+    ch = ConstraintHandler(model.dh₂)
+    db = Dirichlet(:θ, Set(1 : getnnodes(model.grid)), (x, t) -> model.θ₀(x))
+    add!(ch, db)
+    close!(ch)
+    update!(ch, 0)
+    u₀ = zeros(ndofs(model.dh₂))
+    apply!(u₀, ch)
+
+    # Create ODE problem
+    jac_sparsity = sparse(K)
+    rhs = ODEFunction(dif!, mass_matrix=M, jac_prototype=jac_sparsity)
+    problem = ODEProblem(rhs, u₀, (0, tf), (K, f))
+    sol = solve(problem, solver, saveat=saveat, tstops=saveat, reltol=reltol, abstol=abstol)
+    
+    return sol
+end
+
+function dif!(du, u, p, t)
+    mul!(du, p[1], u)
+    du .+= p[2]
+end
+
+function assemble_M!(M::SparseMatrixCSC, model::ContModelFer)
+
+    n_basefuncs_θ = getnbasefunctions(model.cellvalues)
+    n_basefuncs_ω = getnbasefunctions(model.cellvalues)
+    n_basefuncs = n_basefuncs_θ + n_basefuncs_ω
+    θ▄, ω▄ = 1, 2
+
+    Mₑ = PseudoBlockArray(zeros(n_basefuncs, n_basefuncs), [n_basefuncs_θ, n_basefuncs_ω], [n_basefuncs_θ, n_basefuncs_ω])
+
+    assembler = start_assemble(M)
+
+    for cell in CellIterator(model.dh₂)
+
+        fill!(Mₑ, 0)
+
+
+        Ferrite.reinit!(model.cellvalues, cell)
+
+        for q_point in 1:getnquadpoints(model.cellvalues)
+            x = spatial_coordinate(model.cellvalues, q_point, getcoordinates(cell))
+            dΩ = getdetJdV(model.cellvalues, q_point)
+            for i in 1:n_basefuncs_θ
+                φᵢ = shape_value(model.cellvalues, q_point, i)
+                for j in 1:n_basefuncs_θ
+                    φⱼ = shape_value(model.cellvalues, q_point, j)
+                    Mₑ[BlockIndex((θ▄, θ▄), (i, j))] += φᵢ ⋅ φⱼ * dΩ
+                    Mₑ[BlockIndex((ω▄, ω▄), (i, j))] += model.m(x) * φᵢ ⋅ φⱼ * dΩ
+                end
+            end
+        end
+
+        assemble!(assembler, celldofs(cell), Mₑ)
+    end
+    return M
+end
+
+function assemble_K!(K::SparseMatrixCSC, f::Vector, model::ContModelFer)
+    n_basefuncs_θ = getnbasefunctions(model.cellvalues)
+    n_basefuncs_ω = getnbasefunctions(model.cellvalues)
+    n_basefuncs = n_basefuncs_θ + n_basefuncs_ω
+    θ▄, ω▄ = 1, 2
+
+    Kₑ = PseudoBlockArray(zeros(n_basefuncs, n_basefuncs), [n_basefuncs_θ, n_basefuncs_ω], [n_basefuncs_θ, n_basefuncs_ω])
+    fₑ = zeros(n_basefuncs)
+
+    assembler = start_assemble(K, f)
+
+    for cell in CellIterator(model.dh₂)
+        fill!(Kₑ, 0)
+        fₑ .= 0
+
+        Ferrite.reinit!(model.cellvalues, cell)
+
+        for q_point in 1:getnquadpoints(model.cellvalues)
+            x = spatial_coordinate(model.cellvalues, q_point, getcoordinates(cell))
+            b = SparseMatrixCSC(diagm([model.bx(x), model.by(x)]))
+            dΩ = getdetJdV(model.cellvalues, q_point)
+            for i in 1:n_basefuncs_θ
+                φᵢ = shape_value(model.cellvalues, q_point, i)
+                ∇φᵢ = shape_gradient(model.cellvalues, q_point, i)
+                for j in 1:n_basefuncs_ω
+                    φⱼ = shape_value(model.cellvalues, q_point, j)
+                    ∇φⱼ = shape_gradient(model.cellvalues, q_point, j)
+                    Kₑ[BlockIndex((θ▄, ω▄), (i, j))] += φᵢ ⋅ φⱼ * dΩ
+                    Kₑ[BlockIndex((ω▄, θ▄), (i, j))] -= ∇φᵢ ⋅ (b * ∇φⱼ) * dΩ
+                    Kₑ[BlockIndex((ω▄, ω▄), (i, j))] -= model.d(x) * φᵢ ⋅ φⱼ * dΩ
+                end
+                fₑ[n_basefuncs_θ+i] += (model.p(x) + model.fault(x)) * φᵢ * dΩ
+            end
+        end
+
+        assemble!(assembler, celldofs(cell), Kₑ, fₑ)
+    end
+    return K, f
+end
+
 
 function perform_dyn_sim(
     contmod::ContModel;

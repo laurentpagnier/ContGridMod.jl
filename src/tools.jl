@@ -1,5 +1,10 @@
 export back_to_2d, albers_projection, import_json_numerics, import_border, get_discrete_values, copy_model
 
+function exponential2D(x::Union{Vector{T},Tensor{1,dim,T,dim}}, x₀::Union{Vector{T}, Tensor{1, dim, T, dim}}, a::Real, σ::Real) where {T, dim}
+    dif = x .- x₀
+    return a / (σ^2 * 2 * π) * exp(-0.5 * (dif' * dif) / σ^2)
+end
+
 function inPolygon(
     p::Matrix{Float64},
     poly::Matrix{Float64},

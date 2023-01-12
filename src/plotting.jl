@@ -1,7 +1,29 @@
 using Plots
+using FerriteViz
+using GLMakie
 
-export hm_plot, time_plot, hm_movie, disc_plot, cmp_plot
+export hm_plot, time_plot, hm_movie, disc_plot, cmp_plot, nodal_plot
 
+
+function nodal_plot(model::ContModelFer, fieldname::Symbol; colormap=:inferno, colorbar=true)::Figure
+    f = Figure()
+    Axis(f[1, 1])
+    sp = solutionplot!(model.dh₁, getproperty(model, fieldname), colormap=colormap)
+    if colorbar
+        Colorbar(f[1, 2], sp)
+    end
+    return f
+end
+
+function nodal_plot(model::ContModelFer, val::Vector{T}; colormap=:inferno, colorbar=true)::Figure where {T}
+    f = Figure()
+    Axis(f[1, 1])
+    sp = solutionplot!(model.dh₁, val, colormap=colormap)
+    if colorbar
+        Colorbar(f[1, 2], sp)
+    end
+    f
+end
 
 function hm_plot(
     contmodel::ContModel,
