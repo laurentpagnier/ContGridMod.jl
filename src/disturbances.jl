@@ -10,7 +10,7 @@ function add_local_disturbance!(model::ContModelFer, coord::Vector{Float64}, dP:
     apply!(p, ch)
     normalize_values!(p, dP, model.area, model.grid, model.dh₁, model.cellvalues)
     model.fault_nodal = p
-    model.fault = x->interpolate(x, model.grid, model.dh₁, p, :u)
+    model.fault = (x; extrapolate=true, warn=:semi) -> interpolate(x, model.grid, model.dh₁, p, :u, extrapolate=extrapolate, warn=warn)
     return nothing
 end
 

@@ -29,12 +29,13 @@ end
 
 function get_params(
     grid::Grid,
-    tf::Float64,
+    tf::Real,
     dm::DiscModel;
-    κ::Float64=1.0,
-    u_min::Float64=0.1,
-    σ::Float64=0.01,
-    bfactor::Float64=1.0
+    κ::Real=1.0,
+    u_min::Real=0.1,
+    σ::Real=0.01,
+    bfactor::Real=1.0,
+    bmin::Real=1000.
 )::ContModelFer
 
     # Create the dof handler and interpolation functions
@@ -99,9 +100,23 @@ function get_params(
     m = diffusion(dh₁, cellvalues, grid, m₀, tf, κ)
     m = normalize_values!(m, sum(dm.m_gen[dm.p_gen.>0]), area, grid, dh₁, cellvalues)
     p = diffusion(dh₁, cellvalues, grid, p₀, tf, κ)
-    p = normalize_values!(p, 0.0, area, grid, dh₁, cellvalues)
+    p = normalize_values!(p, 0.0, area, grid, dh₁, cellvalues, mode="off")
     bx = diffusion(dh₁, cellvalues, grid, bx₀, tf, κ)
     by = diffusion(dh₁, cellvalues, grid, by₀, tf, κ)
+    bx .= max.(bx, bmin)
+    by .= max.(by, bmin)
+
+    # Create constraint handler for stable solution
+    node_coords = [dh₁.grid.nodes[i].x for i in 1:size(dh₁.grid.nodes, 1)]
+    disc_slack = [Ferrite.Vec(dm.coord[dm.id_slack, :]...)]
+    id_slack = argmin(norm.(node_coords .- disc_slack))
+    ch = ConstraintHandler(dh₁)
+    gen₀ = Dirichlet(:u, Set([id_slack]), (x, t) -> 0)
+    add!(ch, gen₀)
+    close!(ch)
+    update!(ch, 0)
+    K = create_sparsity_pattern(dh₁)
+    f = zeros(ndofs(dh₁))
 
     return ContModelFer(
         grid,
@@ -116,13 +131,16 @@ function get_params(
         by,
         zeros(ndofs(dh₁)), # θ₀_nodal
         zeros(ndofs(dh₁)), # fault_nodal
-        (x) -> interpolate(x, grid, dh₁, m, :u),
-        (x) -> interpolate(x, grid, dh₁, d, :u),
-        (x) -> interpolate(x, grid, dh₁, p, :u),
-        (x) -> interpolate(x, grid, dh₁, bx, :u),
-        (x) -> interpolate(x, grid, dh₁, by, :u),
+        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, m, :u, extrapolate=extrapolate, warn=warn),
+        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, d, :u, extrapolate=extrapolate, warn=warn),
+        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, p, :u, extrapolate=extrapolate, warn=warn),
+        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, bx, :u, extrapolate=extrapolate, warn=warn),
+        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, by, :u, extrapolate=extrapolate, warn=warn),
         (x) -> 0, # θ₀(x)
         (x) -> 0, # fault(x)
+        ch,
+        K,
+        f,
     )
 end
 
@@ -220,15 +238,51 @@ function integrate(dh::DofHandler, cellvalues::CellScalarValues, f::Function)::F
     return int
 end
 
-function interpolate(x::Tensor{1,dim,T,dim}, grid::Grid, dh::DofHandler, u::Vector{Float64}, fname::Symbol; off::Float64=0.0)::Float64 where {dim,T}
-    ph = PointEvalHandler(grid, [x])
-    return get_point_values(ph, dh, u, fname)[1] + off
+function interpolate(x::Tensor{1, 2, T, 2}, grid::Grid, dh::DofHandler, u::Vector{Float64}, fname::Symbol; off::Float64=0.0, factor::Float64=1.0, extrapolate::Bool=true, warn::Symbol=:semi)::Float64 where {T}
+    ph = PointEvalHandler(grid, [x], warn=(warn==:all))
+    if isnan(get_point_values(ph, dh, u, fname)[1])
+        if extrapolate
+            if warn in [:all, :semi]
+                println("There are points which are outside the grid. There value will be set to the value of the closest grid point.")
+            end
+            grid_coords = [node.x for node in grid.nodes] 
+            min_ix = argmin([norm(coord .- x) for coord in grid_coords]) 
+            ph = PointEvalHandler(grid, [grid_coords[min_ix]])
+        elseif warn in [:all, :semi]
+            println("There are points which are outside the grid. There value will be set to NaN.")
+        end
+    end
+    return factor * get_point_values(ph, dh, u, fname)[1] + off
 end
 
-function normalize_values!(u::Vector{Float64}, value::Float64, area::Float64, grid::Grid, dh::DofHandler, cellvalues::CellScalarValues)::Vector{Float64}
+function interpolate(x::Vector{Tensor{1, 2, T, 2}}, grid::Grid, dh::DofHandler, u::Vector{Float64}, fname::Symbol; off::Float64=0.0, factor::Float64=1.0, extrapolate::Bool=true, warn::Symbol=:semi)::Vector{Float64} where {T}
+    ph = PointEvalHandler(grid, x, warn=(warn==:all))
+    re = get_point_values(ph, dh, u, fname)
+    nan_ix = findall(isnan.(re))
+    if extrapolate && !isempty(nan_ix)
+        if warn in [:all, :semi]
+            println("There are points which are outside the grid. There value will be set to the value of the closest grid point.")
+        end
+        grid_coords = [node.x for node in grid.nodes] 
+        min_ix = [argmin([norm(coord .- x[j]) for coord in grid_coords]) for j in nan_ix]
+        x[nan_ix] = grid_coords[min_ix]
+        ph = PointEvalHandler(grid, x)
+    elseif !isempty(nan_ix) && warn in [:all, :semi]
+        println("There are points which are outside the grid. There value will be set to NaN.")
+    end
+    return factor * get_point_values(ph, dh, u, fname) .+ off
+end
+
+function normalize_values!(u::Vector{Float64}, value::Float64, area::Float64, grid::Grid, dh::DofHandler, cellvalues::CellScalarValues; mode::String="factor")::Vector{Float64}
     utot = integrate(dh, cellvalues, x -> interpolate(x, grid, dh, u, :u))
     ch = ConstraintHandler(dh)
-    d = Dirichlet(:u, Set(1:getnnodes(grid)), (x, t) -> interpolate(x, grid, dh, u, :u, off=(value - utot) / area))
+    if mode[1] == 'f'
+        d = Dirichlet(:u, Set(1:getnnodes(grid)), (x, t) -> interpolate(x, grid, dh, u, :u, factor=(value / utot)))
+    elseif mode[1] == 'o'
+        d = Dirichlet(:u, Set(1:getnnodes(grid)), (x, t) -> interpolate(x, grid, dh, u, :u, off=(value - utot) / area))
+    else
+        throw(ArgumentError("Mode must be \"factor\" or \"off\""))
+    end
     add!(ch, d)
     close!(ch)
     update!(ch, 0)

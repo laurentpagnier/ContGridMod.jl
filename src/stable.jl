@@ -3,15 +3,12 @@ export compute_stable_sol!, compute_stable_sol, stable_sol, stable_sol!
 
 function stable_sol(model::ContModelFer)::Vector{Float64}
     # We need to fix the value at one grid point
-    ch = ConstraintHandler(model.dh₁)
-    gen₀ = Dirichlet(:u, Set([1]), (x, t) -> 0)
-    add!(ch, gen₀)
-    close!(ch)
-    update!(ch, 0)
     K = create_sparsity_pattern(model.dh₁)
-    f = zeros(ndofs(model.dh₁))
-    K, f = assemble_K₀!(K, f, model.cellvalues, model.dh₁, model)
-    apply!(K, f, ch)
+    f = zeros(model.dh₁.ndofs.x)
+    K, f = assemble_K₀!(model.K₀, model.f₀, model.cellvalues, model.dh₁, model)
+    apply!(K, f, model.ch)
+    model.K₀ = K
+    model.f₀ = f
     θ₀ = K \ f
     return θ₀
 end
@@ -19,7 +16,7 @@ end
 function stable_sol!(model::ContModelFer)::Nothing
     θ₀ = stable_sol(model)
     model.θ₀_nodal = θ₀
-    model.θ₀ = x -> interpolate(x, model.grid, model.dh₁, θ₀, :u)
+    model.θ₀ = (x; extrapolate=true, warn=:semi) -> interpolate(x, model.grid, model.dh₁, θ₀, :u, extrapolate=extrapolate, warn=warn)
     return nothing
 end
 

@@ -99,3 +99,29 @@ function time_plot(
     plot!(legend = false)
     plot(p1, p2, layout=(1, 2), size=(800,300))
 end
+function disc_plot(
+    coord::Array{Float64, 2},
+    values::Array{Float64, 1};
+    borders::Array{Array{Float64,2},1} = Array{Float64,2}[],
+    clim::Tuple{Float64, Float64} = (0.0,0.0),
+    c::Symbol = :inferno,
+    cbar::Bool = true,
+    cb_title::String = "",
+    markersize = 6.0
+)
+    Plots.plot()
+    g = :inferno
+    for k in 1:length(borders)
+        p2 = Plots.plot!(borders[k][:, 1], borders[k][:, 2], color=:black, lw=3.0)
+    end
+    if (clim==(0.0,0.0))
+        Plots.scatter!(coord[:,2], coord[:,1], zcolor=values, legend=false, grid=false,
+        msw=0, showaxis=:hide, xaxis=nothing, yaxis=nothing, markersize=markersize, c=c, cbar=cbar,
+        cb_title=cb_title)
+    else
+        Plots.scatter!(coord[:,2], coord[:,1], zcolor=values, legend=false, clim=clim, grid=false,
+        msw=0, showaxis=:hide, xaxis=nothing, yaxis=nothing, markersize=markersize, c=c, cbar=:bottom,
+        cb_title=cb_title)
+    end
+
+end

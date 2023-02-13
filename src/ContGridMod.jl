@@ -69,6 +69,9 @@ mutable struct ContModelFer
     by::Function
     θ₀::Function
     fault::Function
+    ch::ConstraintHandler
+    K₀::SparseMatrixCSC
+    f₀::Vector{Float64}
 end
 
 include("discrete.jl");
