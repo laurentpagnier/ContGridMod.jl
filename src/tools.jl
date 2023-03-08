@@ -24,6 +24,9 @@ function update_model!(model::ContModelFer, u_name::Symbol, dm::DiscModel, tf::R
         function d₀(x, t)
             re = 0
             for i in 1:dm.Ngen
+                if dm.p_gen == 0
+                    continue
+                end
                 dif = x .- dm.coord[dm.id_gen[i], :]
                 re += dm.d_gen[i] / (σ^2 * 2 * π) * exp(-0.5 * (dif' * dif) / σ^2)
             end
@@ -34,7 +37,7 @@ function update_model!(model::ContModelFer, u_name::Symbol, dm::DiscModel, tf::R
             return max(re, u_min)
         end
         d = diffusion(model.dh₁, model.cellvalues, model.grid, d₀, tf, κ)
-        d = normalize_values!(d, sum(dm.d_load) + sum(dm.d_gen), area, model.grid, model.dh₁, model.cellvalues)
+        d = normalize_values!(d, sum(dm.d_load) + sum(dm.d_gen[dm.p_gen .> 0]), area, model.grid, model.dh₁, model.cellvalues)
         update_model!(model, u_name, d)
     elseif u_name == :m
         function m₀(x, t)

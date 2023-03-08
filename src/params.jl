@@ -57,6 +57,9 @@ function get_params(
     function d₀(x, t)
         re = 0
         for i in 1:dm.Ngen
+            if dm.p_gen[i] == 0
+                continue
+            end
             dif = x .- dm.coord[dm.id_gen[i], :]
             re += dm.d_gen[i] / (σ^2 * 2 * π) * exp(-0.5 * (dif' * dif) / σ^2)
         end
@@ -96,7 +99,7 @@ function get_params(
         return bb(dm, x, σ, bfactor)[2]
     end
     d = diffusion(dh₁, cellvalues, grid, d₀, tf, κ)
-    d = normalize_values!(d, sum(dm.d_load) + sum(dm.d_gen), area, grid, dh₁, cellvalues)
+    d = normalize_values!(d, sum(dm.d_load) + sum(dm.d_gen[dm.p_gen .> 0]), area, grid, dh₁, cellvalues)
     m = diffusion(dh₁, cellvalues, grid, m₀, tf, κ)
     m = normalize_values!(m, sum(dm.m_gen[dm.p_gen.>0]), area, grid, dh₁, cellvalues)
     p = diffusion(dh₁, cellvalues, grid, p₀, tf, κ)
