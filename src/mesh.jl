@@ -43,6 +43,11 @@ function get_grid(
         end
     else
         gmsh.write(fileout)
+        open(fileout, "a") do f
+            write(f, "\$BeginScaleFactor\n")
+            write(f, string(scale_factor) * "\n")
+            write(f, "\$EndScaleFactor\n")
+        end
         grid = togrid(fileout)
     end
 
@@ -55,7 +60,21 @@ end
 function get_grid(
     file::String,
 )
-    get_grid(file)
+    grid = togrid(file)
+    global scale_factor = nothing
+    open(file) do f
+        while !eof(f)
+            s = readline(f)
+            if s == "\$BeginScaleFactor"
+                scale_factor = tryparse(Float64, readline(f))
+                break
+            end
+        end
+    end
+    if isnothing(scale_factor)
+        throw("scale_factor could not be read")
+    end
+    return grid, scale_factor
 end
 
 function get_lattice_mesh(
