@@ -126,8 +126,8 @@ function disc_dynamics(
             re_id[j] = i + ng
         end
     end
-    # return sol
-    return saved_values.t, vals[:, re_id]
+    return sol
+    # return saved_values.t, vals[:, re_id]
 end
 
 
