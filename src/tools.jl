@@ -1,4 +1,4 @@
-export back_to_2d, albers_projection, import_json_numerics, import_border, get_discrete_values, copy_model
+export back_to_2d, albers_projection, import_json_numerics, import_border, get_discrete_values, copy_model, to_jld2, from_jld2
 
 function exponential2D(x::Union{Vector{T},Tensor{1,dim,T,dim}}, x₀::Union{Vector{T},Tensor{1,dim,T,dim}}, a::Real, σ::Real) where {T,dim}
     dif = x .- x₀
@@ -37,7 +37,7 @@ function update_model!(model::ContModelFer, u_name::Symbol, dm::DiscModel, tf::R
             return max(re, u_min)
         end
         d = diffusion(model.dh₁, model.cellvalues, model.grid, d₀, tf, κ)
-        d = normalize_values!(d, sum(dm.d_load) + sum(dm.d_gen[dm.p_gen .> 0]), area, model.grid, model.dh₁, model.cellvalues)
+        d = normalize_values!(d, sum(dm.d_load) + sum(dm.d_gen[dm.p_gen.>0]), area, model.grid, model.dh₁, model.cellvalues)
         update_model!(model, u_name, d)
     elseif u_name == :m
         function m₀(x, t)
@@ -81,7 +81,7 @@ function update_model!(model::ContModelFer, u_name::Symbol, dm::DiscModel, tf::R
         function by₀(x, t)
             return bb(dm, x, σ, bfactor)[2]
         end
-        by = diffusion(model.dh₁,model.cellvalues, model.grid, by₀, tf, κ)
+        by = diffusion(model.dh₁, model.cellvalues, model.grid, by₀, tf, κ)
         by .= max.(by, bmin)
         update_model!(model, u_name, by)
     end
@@ -271,3 +271,43 @@ function find_node(
 )
     return find_node(cm.mesh, coord)
 end
+
+function to_jld2(
+    fn::String,
+    model::ContModelFer
+)
+    tmp = Dict(string(key) => getfield(model, key) for key ∈ fieldnames(ContModelFer))
+    save(fn, tmp)
+end
+
+function from_jld2(
+    fn::String
+)
+    tmp = load(fn)
+    model = ContModelFer(
+        tmp["grid"],
+        tmp["dh₁"],
+        tmp["dh₂"],
+        tmp["cellvalues"],
+        tmp["area"],
+        tmp["m_nodal"],
+        tmp["d_nodal"],
+        tmp["p_nodal"],
+        tmp["bx_nodal"],
+        tmp["by_nodal"],
+        tmp["θ₀_nodal"],
+        tmp["fault_nodal"],
+        tmp["m"],
+        tmp["d"],
+        tmp["p"],
+        tmp["bx"],
+        tmp["by"],
+        tmp["θ₀"],
+        tmp["fault"],
+        tmp["ch"],
+        tmp["K₀"],
+        tmp["f₀"]
+    )
+    return model
+end
+

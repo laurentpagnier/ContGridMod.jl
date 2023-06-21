@@ -3,6 +3,7 @@ module ContGridMod
 using JSON
 using SparseArrays
 using Ferrite
+using FileIO
 
 mutable struct DiscModel
     m_gen::Vector{Float64} # generator inertia
