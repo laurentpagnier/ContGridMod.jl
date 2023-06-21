@@ -113,8 +113,9 @@ function disc_dynamics(
     # solve the swing equations
     func = ODEFunction(swing!, jac=jacobian!, jac_prototype=jac_proto)
     prob = ODEProblem(func, u0, tspan)
-    sol = solve(prob, alg, tstops=tt, callback=cb; solve_kwargs...)
-    vals = reduce(hcat, saved_values.saveval)'
+    # sol = solve(prob, alg, tstops=tt, callback=cb; solve_kwargs...)
+    sol = solve(prob, alg, solve_kwargs...)
+    # vals = reduce(hcat, saved_values.saveval)'
 
     # get ids to reorder for return values 
     re_id = Array(1:Nbus)

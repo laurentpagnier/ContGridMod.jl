@@ -1,5 +1,6 @@
 using Plots
 using FerriteViz
+using GLMakie
 
 export hm_plot, time_plot, hm_movie, disc_plot, cmp_plot, nodal_plot
 
