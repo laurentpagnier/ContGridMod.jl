@@ -1,4 +1,4 @@
-export back_to_2d, albers_projection, import_json_numerics, import_border, get_discrete_values, copy_model, to_jld2, from_jld2
+export back_to_2d, albers_projection, import_json_numerics, import_border, get_discrete_values, copy_model, to_jld2, from_jld2_cont, from_jld2_disc
 
 function exponential2D(x::Union{Vector{T},Tensor{1,dim,T,dim}}, x₀::Union{Vector{T},Tensor{1,dim,T,dim}}, a::Real, σ::Real) where {T,dim}
     dif = x .- x₀
@@ -274,13 +274,13 @@ end
 
 function to_jld2(
     fn::String,
-    model::ContModelFer
+    model::Union{ContModelFer,DiscModel}
 )
-    tmp = Dict(string(key) => getfield(model, key) for key ∈ fieldnames(ContModelFer))
+    tmp = Dict(string(key) => getfield(model, key) for key ∈ fieldnames(typeof(model)))
     save(fn, tmp)
 end
 
-function from_jld2(
+function from_jld2_cont(
     fn::String
 )
     tmp = load(fn)
@@ -310,4 +310,29 @@ function from_jld2(
     )
     return model
 end
+
+function from_jld2_disc(
+    fn::String
+)
+    tmp = load(fn)
+    model = DiscModel(
+        tmp["m_gen"],
+        tmp["d_gen"],
+        tmp["id_gen"],
+        tmp["id_slack"],
+        tmp["coord"],
+        tmp["d_load"],
+        tmp["id_line"],
+        tmp["b"],
+        tmp["p_load"],
+        tmp["th"],
+        tmp["p_gen"],
+        tmp["max_gen"],
+        tmp["Nbus"],
+        tmp["Ngen"],
+        tmp["Nline"],
+    )
+    return model
+end
+
 
