@@ -1,9 +1,8 @@
 using LinearAlgebra
 using SparseArrays
-using IterativeSolvers
 using DifferentialEquations
 
-export find_gen, find_node, find_node2, NRsolver, disc_dynamics
+export find_gen, find_node, NRsolver, disc_dynamics
 
 function disc_dynamics(
     dm::DiscModel,
@@ -17,7 +16,6 @@ function disc_dynamics(
     tol::Float64=1e-10,  # Target tolerance for the Newtoon-Raphson solver
     maxiter::Int64=30,  # Maximum iteration for the Newton-Raphson solver
     dmin::Float64=1e-4,  # Minimum amount of damping for load buses
-    reorder::Bool=false,  # Whether the results will be reorder such that the generators are first 
     alg=TRBDF2(),  # The solver that is passed to the solve function
     solve_kwargs::Dict=Dict()  # Keyword arguments to the solve function
 )
@@ -30,51 +28,34 @@ function disc_dynamics(
         if (coords == [NaN NaN] || scale_factor == 0.0)
             throw(ErrorException("Either the coordinates or the ID of the faulty generator need to be specified. If the coordinates are given, scale_factor must be specified."))
         end
-        ~, tmp = find_gen(dm, coords, dP, scale_factor=scale_factor)
+        _, tmp = find_gen(dm, coords, delta_p, scale_factor=scale_factor)
         faultid = tmp[1]
     end
 
     # Data preperation
     Nbus = dm.Nbus
-    is_producing = dm.p_gen .> 0
-    id_gen = dm.id_gen[is_producing]
-    id_load = setdiff(1:Nbus, id_gen)
+    is_producing = dm.p_gen .> 1e-4
+    id_gen = sort(dm.id_gen[is_producing])
+    id_load = sort(setdiff(1:Nbus, id_gen))
     ng = length(id_gen)
-    nl = length(id_load)
     p_gen = zeros(Nbus)
     p_gen[dm.id_gen] .= dm.p_gen
     p = p_gen - dm.p_load
     p .-= sum(p) / Nbus
-    edges = Int64.(zeros(size(dm.id_line)))
-    line_start = dm.id_line[:, 1]
-    line_end = dm.id_line[:, 2]
-
-    # bus reordering: generator buses first 
-    for i in 1:ng
-        edges[line_start.==id_gen[i], 1] .= i
-        edges[line_end.==id_gen[i], 2] .= i
-    end
-    for i in 1:nl
-        edges[line_start.==id_load[i], 1] .= i + ng
-        edges[line_end.==id_load[i], 2] .= i + ng
-    end
     nline = dm.Nline
-    inc = sparse([edges[:, 1]; edges[:, 2]], [1:nline; 1:nline], [-ones(nline); ones(nline)])
+    inc = sparse([dm.id_line[:, 1]; dm.id_line[:, 2]], [1:nline; 1:nline], [-ones(nline); ones(nline)])
 
     # create arrays of dynamical parameters
     mg = dm.m_gen[is_producing]
     dg = dm.d_gen[is_producing] + dm.d_load[id_gen]
     dl = max.(dm.d_load[id_load], dmin)
-    pg = p[id_gen]
-    pl = p[id_load]
-    p = [pg; pl]
 
     # get the stable solution
     Ybus = -im * inc * sparse(1:nline, 1:nline, dm.b) * inc'
     q = zeros(Nbus)
     V = ones(Nbus)
     theta = zeros(Nbus)
-    V, theta, ~ = NRsolver(Ybus, V, theta, p, q, Array{Int64,1}([]), 1, tol=tol, maxiter=maxiter)
+    V, theta, _ = NRsolver(Ybus, V, theta, p, q, Array{Int64,1}([]), dm.id_slack, tol=tol, maxiter=maxiter)
 
     # preparations for dynamical simulation
     if (faultid != 0)
@@ -83,52 +64,47 @@ function disc_dynamics(
     else
         dp = delta_p
     end
-    ix = [Nbus+1:Nbus+ng; ng+1:Nbus]
-    mass = 1 ./ [ones(ng); dl; mg]
+    ix = collect(1:Nbus)
+    for (i, j) in enumerate(id_gen)
+        ix[j] = Nbus + i
+    end
+    mass = ones(Nbus)
+    mass[id_load] = dl
+    mass = 1 ./ [mass; mg]
     u0 = [theta; zeros(ng)]
     tspan = (tstart, tend)
 
-    function swing!(du, u, para, t)
-        du[1:ng] = u[Nbus+1:end]
+    function swing!(du, u, _, _)
+        du[id_gen] = u[Nbus+1:end]
         du[ix] = p + dp - inc * ((dm.b .* sin.(inc' * u[1:Nbus])))
         du[Nbus+1:end] -= dg .* u[Nbus+1:end]
         du .*= mass
     end
 
-    function jacobian!(J, u, p, t)
+    id1 = [id_load; Nbus+1:Nbus+ng]
+    id2 = [id_gen; id_load]
+    id3 = [id_load; id_gen]
+    function jacobian!(J, u, _, _)
         J0 = -inc * ((dm.b .* cos.(inc' * u[1:Nbus])) .* inc')
-        J[:, :] = [spzeros(ng, Nbus) sparse(1.0I, ng, ng); J0[ng+1:end, 1:ng] J0[ng+1:Nbus, ng+1:Nbus] spzeros(nl, ng); J0[1:ng, 1:ng] J0[1:ng, ng+1:Nbus] -dg.*sparse(1.0I, ng, ng)]
+        J[:, :] = spzeros(Nbus + ng, Nbus + ng)
+        J[id1, id2] = J0[id3, id2]
+        J[Nbus+1:end, Nbus+1:end] = -spdiagm(dg)
         J[:, :] = mass .* J
     end
+
     jac_proto = spzeros(Nbus + ng, Nbus + ng)
     jacobian!(jac_proto, ones(Nbus + ng), 0, 0)
-    for i=1:Nbus + ng
+    for i = 1:Nbus+ng
         jac_proto[i, i] += 1
     end
     # save the frequencies at the predefined time steps
-    saved_values = SavedValues(Float64, Vector{Float64})
     tt = tstart:dt:tend
-    cb = SavingCallback((u, t, integrator) -> [u[Nbus+1:end]; integrator(t, Val{1}, idxs=ng+1:Nbus)], saved_values, saveat=tt)
 
     # solve the swing equations
     func = ODEFunction(swing!, jac=jacobian!, jac_prototype=jac_proto)
     prob = ODEProblem(func, u0, tspan)
-    # sol = solve(prob, alg, tstops=tt, callback=cb; solve_kwargs...)
-    sol = solve(prob, alg, solve_kwargs...)
-    # vals = reduce(hcat, saved_values.saveval)'
-
-    # get ids to reorder for return values 
-    re_id = Array(1:Nbus)
-    if !reorder
-        for (i, j) in enumerate(id_gen)
-            re_id[j] = i
-        end
-        for (i, j) in enumerate(id_load)
-            re_id[j] = i + ng
-        end
-    end
+    sol = solve(prob, alg, tstops=tt, solve_kwargs...)
     return sol
-    # return saved_values.t, vals[:, re_id]
 end
 
 
@@ -167,7 +143,7 @@ function NRsolver(
         x = J \ dPQ
         theta[id] = theta[id] - x[1:nb-1]
         if (!isempty(idpq))
-            V[idpq] -= x[n:end]
+            V[idpq] -= x[nb:end]
         end
         error = maximum(abs.(dPQ))
         iter += 1
