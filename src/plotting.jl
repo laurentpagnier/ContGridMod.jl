@@ -1,8 +1,4 @@
-using Plots
-using FerriteViz
-using GLMakie
-
-export hm_plot, time_plot, hm_movie, disc_plot, cmp_plot, nodal_plot
+export hm_plot, time_plot, disc_plot, nodal_plot
 
 
 function nodal_plot(model::ContModelFer, fieldname::Symbol; colormap=:inferno, colorbar=true)::Figure

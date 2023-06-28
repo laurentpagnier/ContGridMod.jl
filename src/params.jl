@@ -1,10 +1,5 @@
 export get_params, load_discrete_model, update_model!, update_model_dm!
 
-using HDF5
-using Plots
-using SparseArrays
-using DifferentialEquations
-
 function bb(dm::DiscModel, x::Union{Vector{T},Tensor{1,dim,T,dim}}, σ::Float64, bfactor::Float64)::Vector{Float64} where {T,dim}
     ds = dm.coord[dm.id_line[:, 2], :] .- dm.coord[dm.id_line[:, 1], :]
     re = zeros(2)

@@ -1,7 +1,5 @@
 export get_lattice_mesh, get_grid
 
-using Ferrite, FerriteGmsh, Gmsh
-
 function get_grid(
     filein::String,
     dx::Float64,

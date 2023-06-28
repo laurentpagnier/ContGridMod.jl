@@ -1,5 +1,3 @@
-
-
 function hm_movie(
     contmod::ContModel,
     ts::Array{Float64, 1},

@@ -1,7 +1,3 @@
-using LinearAlgebra
-using SparseArrays
-using DifferentialEquations
-
 export find_gen, find_node, NRsolver, disc_dynamics
 
 function disc_dynamics(
