@@ -1,4 +1,4 @@
-export back_to_2d, albers_projection, import_json_numerics, import_border, get_discrete_values, copy_model, to_jld2, from_jld2_cont, from_jld2_disc
+export back_to_2d, albers_projection, import_json_numerics, import_border, get_discrete_values, copy_model, to_jld2, from_jld2, from_jld2_disc
 
 function exponential2D(x::Union{Vector{T},Tensor{1,dim,T,dim}}, x₀::Union{Vector{T},Tensor{1,dim,T,dim}}, a::Real, σ::Real) where {T,dim}
     dif = x .- x₀
@@ -277,62 +277,67 @@ function to_jld2(
     model::Union{ContModelFer,DiscModel}
 )
     tmp = Dict(string(key) => getfield(model, key) for key ∈ fieldnames(typeof(model)))
+    tmp["type"] = typeof(model)
+    if (typeof(model) == ContModelFer)
+        delete!(tmp, "m")
+        delete!(tmp, "d")
+        delete!(tmp, "p")
+        delete!(tmp, "bx")
+        delete!(tmp, "by")
+        delete!(tmp, "θ₀")
+        delete!(tmp, "fault")
+    end
     save(fn, tmp)
 end
 
-function from_jld2_cont(
+function from_jld2(
     fn::String
 )
     tmp = load(fn)
-    model = ContModelFer(
-        tmp["grid"],
-        tmp["dh₁"],
-        tmp["dh₂"],
-        tmp["cellvalues"],
-        tmp["area"],
-        tmp["m_nodal"],
-        tmp["d_nodal"],
-        tmp["p_nodal"],
-        tmp["bx_nodal"],
-        tmp["by_nodal"],
-        tmp["θ₀_nodal"],
-        tmp["fault_nodal"],
-        tmp["m"],
-        tmp["d"],
-        tmp["p"],
-        tmp["bx"],
-        tmp["by"],
-        tmp["θ₀"],
-        tmp["fault"],
-        tmp["ch"],
-        tmp["K₀"],
-        tmp["f₀"]
-    )
-    return model
+    if (tmp["type"] == ContModelFer)
+        return ContModelFer(
+            tmp["grid"],
+            tmp["dh₁"],
+            tmp["dh₂"],
+            tmp["cellvalues"],
+            tmp["area"],
+            tmp["m_nodal"],
+            tmp["d_nodal"],
+            tmp["p_nodal"],
+            tmp["bx_nodal"],
+            tmp["by_nodal"],
+            tmp["θ₀_nodal"],
+            tmp["fault_nodal"],
+            (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["m_nodal"], :u, extrapolate=extrapolate, warn=warn),
+            (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["d_nodal"], :u, extrapolate=extrapolate, warn=warn),
+            (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["p_nodal"], :u, extrapolate=extrapolate, warn=warn),
+            (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["bx_nodal"], :u, extrapolate=extrapolate, warn=warn),
+            (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["by_nodal"], :u, extrapolate=extrapolate, warn=warn),
+            (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["θ₀_nodal"], :u, extrapolate=extrapolate, warn=warn),
+            (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["fault_nodal"], :u, extrapolate=extrapolate, warn=warn),
+            tmp["ch"],
+            tmp["K₀"],
+            tmp["f₀"]
+        )
+    elseif (tmp["type"] == DiscModel)
+        return DiscModel(
+            tmp["m_gen"],
+            tmp["d_gen"],
+            tmp["id_gen"],
+            tmp["id_slack"],
+            tmp["coord"],
+            tmp["d_load"],
+            tmp["id_line"],
+            tmp["b"],
+            tmp["p_load"],
+            tmp["th"],
+            tmp["p_gen"],
+            tmp["max_gen"],
+            tmp["Nbus"],
+            tmp["Ngen"],
+            tmp["Nline"],
+        )
+    else
+        throw(ArgumentError("The provided file does not have a type entry matching ContGridMod.ContModelFer or ContGridMod.DiscModel"))
+    end
 end
-
-function from_jld2_disc(
-    fn::String
-)
-    tmp = load(fn)
-    model = DiscModel(
-        tmp["m_gen"],
-        tmp["d_gen"],
-        tmp["id_gen"],
-        tmp["id_slack"],
-        tmp["coord"],
-        tmp["d_load"],
-        tmp["id_line"],
-        tmp["b"],
-        tmp["p_load"],
-        tmp["th"],
-        tmp["p_gen"],
-        tmp["max_gen"],
-        tmp["Nbus"],
-        tmp["Ngen"],
-        tmp["Nline"],
-    )
-    return model
-end
-
-
