@@ -1,4 +1,4 @@
-export back_to_2d, albers_projection, import_json_numerics, import_border, get_discrete_values, copy_model, to_jld2, from_jld2, from_jld2_disc
+export back_to_2d, albers_projection, import_json_numerics, import_border, get_discrete_values, copy_model, to_jld2, from_jld2
 
 function exponential2D(x::Union{Vector{T},Tensor{1,dim,T,dim}}, x₀::Union{Vector{T},Tensor{1,dim,T,dim}}, a::Real, σ::Real) where {T,dim}
     dif = x .- x₀

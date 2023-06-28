@@ -1,6 +1,8 @@
 name = "ContGridMod"
+authors = ["Laurent Pagnier <laurentpagnier@math.arizona.edu>",
+           "Julian Fritzsch <julian.fritzsch@etu.unige.ch>"]
 uuid = "7b3cbbd9-582b-4f4c-9cc3-fb546f746a98"
-version = "0.1.0"
+version = "0.2.0"
 
 [deps]
 BlockArrays = "8e7c35d0-a365-5155-bbbb-fb81a777f24e"
