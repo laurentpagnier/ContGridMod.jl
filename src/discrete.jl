@@ -1,7 +1,7 @@
 export find_gen, find_node, disc_dynamics
 
 """
-    disc_dynamics(dm::DiscModel, tstart::Real, tend::Real, delta_p::Union{Real,Array{Real,1}}[, faultid::Int=0, coords::Array{<:Real,2}=[NaN NaN], dt::Real=1e-2, scale_factor::Real=0.0, tol::Real=1e-10, maxiter::Int=30, dmin::Real=1e-4, alg=TRBDF2(), solve_kwargs::Dict{String,Any}=Dict{String,Any}()])::ODESolution
+    disc_dynamics(dm::DiscModel, tstart::Real, tend::Real, delta_p::Union{Real,Array{Real,1}}[, faultid::Int=0, coords::Array{<:Real,2}=[NaN NaN], dt::Real=1e-2, scale_factor::Real=0.0, tol::Real=1e-10, maxiter::Int=30, dmin::Real=1e-4, alg::OrdinaryDiffEqAlgorithm=TRBDF2(), solve_kwargs::Dict{String,Any}=Dict{String,Any}()])::ODESolution
 
 This function allows to either specify the GPS coordinates of where the fault occurs or the ID of the generator.
 If both are given the ID will be used. If the GPS coordinates are given, the scale_factor must be given.
@@ -108,7 +108,7 @@ end
 
 """
     
-    NRsolver(Ybus::SparseMatrixCSC{<:Complex,<:Int}, V::Array{<:Real,1}, theta::Array{<:Real,1}, p::Array{<:Real,1}, q::Array{<:Real,1}, idpq::Array{<:Int,1}, id_slack::Int; tol::Real=1E-6, maxiter::Int=14)::Tuple{Array{<:Real,1},Array{<:Real,1},Int}
+    NRsolver(Ybus::SparseMatrixCSC{<:Complex,<:Int}, V::Array{<:Real,1}, theta::Array{<:Real,1}, p::Array{<:Real,1}, q::Array{<:Real,1}, idpq::Array{<:Int,1}, id_slack::Int[, tol::Real=1E-6, maxiter::Int=14])::Tuple{Array{<:Real,1},Array{<:Real,1},Int}
 
 Use the Newton Raphson method to solve the powerflow equations.This method is
 adapted from its version on the Pantagruel repository (https://doi.org/10.5281/zenodo.2642175).
