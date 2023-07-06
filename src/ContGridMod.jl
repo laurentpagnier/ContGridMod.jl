@@ -35,34 +35,7 @@ mutable struct DiscModel
     Nline::Int64
 end
 
-mutable struct Mesh
-    Nx::Int64
-    Ny::Int64
-    coord::Matrix{Float64}
-    line_coord::Matrix{Float64}
-    id_edge::Matrix{Int64}
-    is_grid::BitVector
-    yrange::Vector{Float64}
-    xrange::Vector{Float64}
-    dx::Float64
-    border::Matrix{Float64}
-    scale_factor::Float64
-    Nedge::Int64
-    Nnode::Int64
-end
-
 mutable struct ContModel
-    mesh::Mesh
-    id_slack::Int64
-    p::Vector{Float64}
-    dp::Vector{Float64}
-    b::Vector{Float64}
-    m::Vector{Float64}
-    d::Vector{Float64}
-    th::Vector{Float64}
-end
-
-mutable struct ContModelFer
     grid::Grid
     dh₁::DofHandler
     dh₂::DofHandler
