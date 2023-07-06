@@ -11,7 +11,6 @@ function update_model!(model::ContModel, u_name::Symbol, u::Vector{<:Real})::Not
     end
     setproperty!(model, Symbol(string(u_name) * "_nodal"), u)
     setproperty!(model, u_name, (x; extrapolate=true, warn=:semi) -> interpolate(x, model.grid, model.dh₁, u, :u, extrapolate=extrapolate, warn=warn))
-    return nothing
 end
 
 """
@@ -98,8 +97,6 @@ function update_model!(
         by .= max.(by, bmin)
         update_model!(model, u_name, by)
     end
-
-    return nothing
 end
 
 """
@@ -164,7 +161,7 @@ Save a continuous or discrete model to a jld2 file.
 function to_jld2(
     fn::String,
     model::Union{ContModel,DiscModel}
-)::nothing
+)::Nothing
     tmp = Dict(string(key) => getfield(model, key) for key ∈ fieldnames(typeof(model)))
     tmp["type"] = typeof(model)
     if (typeof(model) == ContModel)

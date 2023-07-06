@@ -126,7 +126,7 @@ function get_params(
     K = create_sparsity_pattern(dh₁)
     f = zeros(ndofs(dh₁))
     θ₀ = zeros(ndofs(dh₁))
-    dp = zero(ndofs(dh₁))
+    dp = zeros(ndofs(dh₁))
 
     return ContModel(
         grid,
@@ -265,7 +265,7 @@ end
 
 Interpolate values from the continues model from a  coordinate. If the given coordinate is outside the grid it is replaced by the closed value on the grid.
 """
-function interpolate(x::Tensor{1,2,<:Real}, grid::Grid, dh::DofHandler, u::Vector{<:Real}, fname::Real; off::Real=0.0, factor::Real=1.0, extrapolate::Bool=true, warn::Symbol=:semi)::Real
+function interpolate(x::Tensor{1,2,<:Real}, grid::Grid, dh::DofHandler, u::Vector{<:Real}, fname::Symbol; off::Real=0.0, factor::Real=1.0, extrapolate::Bool=true, warn::Symbol=:semi)::Real
     ph = PointEvalHandler(grid, [x], warn=(warn == :all))
     if isnan(get_point_values(ph, dh, u, fname)[1])
         if extrapolate

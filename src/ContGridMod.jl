@@ -66,7 +66,6 @@ include("dynamics.jl")
 include("mesh.jl")
 include("params.jl")
 include("plotting.jl")
-include("ps_analysis.jl")
 include("stable.jl")
 include("tools.jl")
 
