@@ -1,27 +1,29 @@
-export find_gen, find_node, NRsolver, disc_dynamics
+export find_gen, find_node, disc_dynamics
 
+"""
+    disc_dynamics(dm::DiscModel, tstart::Real, tend::Real, delta_p::Union{Real,Array{Real,1}}[, faultid::Int=0, coords::Array{<:Real,2}=[NaN NaN], dt::Real=1e-2, scale_factor::Real=0.0, tol::Real=1e-10, maxiter::Int=30, dmin::Real=1e-4, alg=TRBDF2(), solve_kwargs::Dict{String,Any}=Dict{String,Any}()])::ODESolution
+
+This function allows to either specify the GPS coordinates of where the fault occurs or the ID of the generator.
+If both are given the ID will be used. If the GPS coordinates are given, the scale_factor must be given.
+Alternatively, an array of size dm.Nbus can be provided which specifies the change in power for each node.
+"""
 function disc_dynamics(
     dm::DiscModel,
-    tstart::Float64,
-    tend::Float64,
-    delta_p::Union{Float64,Array{Float64,1}};
-    faultid::Int64=0,
-    coords::Array{Float64,2}=[NaN NaN],
-    dt::Float64=1e-2,  # Distance of time steps at which the solution is returned
-    scale_factor::Float64=0.0,
-    tol::Float64=1e-10,  # Target tolerance for the Newtoon-Raphson solver
-    maxiter::Int64=30,  # Maximum iteration for the Newton-Raphson solver
-    dmin::Float64=1e-4,  # Minimum amount of damping for load buses
-    alg=TRBDF2(),  # The solver that is passed to the solve function
-    solve_kwargs::Dict=Dict()  # Keyword arguments to the solve function
-)
-    #=
-    This function allows to either specify the GPS coordinates of where the fault occurs or the ID of the generator.
-    If both are given the ID will be used. If the GPS coordinates are given, the scale_factor must be given.
-    Alternatively, an array of size dm.Nbus can be provided which specifies the change in power for each node.
-    =#
+    tstart::Real,
+    tend::Real,
+    delta_p::Union{Real,Array{Real,1}};
+    faultid::Int=0,
+    coords::Array{<:Real,2}=[NaN NaN],
+    dt::Real=1e-2,  # Distance of time steps at which the solution is returned
+    scale_factor::Real=0.0,
+    tol::Real=1e-10,  # Target tolerance for the Newtoon-Raphson solver
+    maxiter::Int=30,  # Maximum iteration for the Newton-Raphson solver
+    dmin::Real=1e-4,  # Minimum amount of damping for load buses
+    alg::OrdinaryDiffEqAlgorithm=TRBDF2(),  # The solver that is passed to the solve function
+    solve_kwargs::Dict{String,Any}=Dict{String,Any}()  # Keyword arguments to the solve function
+)::ODESolution
     if (faultid == 0 && size(delta_p, 1) != dm.Nbus)
-        if (coords == [NaN NaN] || scale_factor == 0.0)
+        if (all(isnan.(coords)) || scale_factor == 0.0)
             throw(ErrorException("Either the coordinates or the ID of the faulty generator need to be specified. If the coordinates are given, scale_factor must be specified."))
         end
         _, tmp = find_gen(dm, coords, delta_p, scale_factor=scale_factor)
@@ -53,7 +55,7 @@ function disc_dynamics(
     theta = zeros(Nbus)
     V, theta, _ = NRsolver(Ybus, V, theta, p, q, Array{Int64,1}([]), dm.id_slack, tol=tol, maxiter=maxiter)
 
-    # preparations for dynamical simulation
+    # preparations for dynamical simulation, mass matrix and fault vectors
     if (faultid != 0)
         dp = zeros(Nbus)
         dp[faultid] = delta_p
@@ -77,6 +79,7 @@ function disc_dynamics(
         du .*= mass
     end
 
+    # Easy indexing for Jacobian calculations
     id1 = [id_load; Nbus+1:Nbus+ng]
     id2 = [id_gen; id_load]
     id3 = [id_load; id_gen]
@@ -103,18 +106,26 @@ function disc_dynamics(
     return sol
 end
 
+"""
+    
+    NRsolver(Ybus::SparseMatrixCSC{<:Complex,<:Int}, V::Array{<:Real,1}, theta::Array{<:Real,1}, p::Array{<:Real,1}, q::Array{<:Real,1}, idpq::Array{<:Int,1}, id_slack::Int; tol::Real=1E-6, maxiter::Int=14)::Tuple{Array{<:Real,1},Array{<:Real,1},Int}
 
+Use the Newton Raphson method to solve the powerflow equations.This method is
+adapted from its version on the Pantagruel repository (https://doi.org/10.5281/zenodo.2642175).
+For information on solving the power flow equations with Newton-Raphson, see, 
+for instance, V. Vittal and A. Bergen, Power systems analysis, Prentice Hall, 1999. 
+"""
 function NRsolver(
-    Ybus::SparseMatrixCSC{ComplexF64,Int64},
-    V::Array{Float64,1},
-    theta::Array{Float64,1},
-    p::Array{Float64,1},
-    q::Array{Float64,1},
-    idpq::Array{Int64,1},
-    id_slack::Int64;
-    tol::Float64=1E-6,
-    maxiter::Int64=14
-)
+    Ybus::SparseMatrixCSC{<:Complex,<:Int},
+    V::Array{<:Real,1},
+    theta::Array{<:Real,1},
+    p::Array{<:Real,1},
+    q::Array{<:Real,1},
+    idpq::Array{<:Int,1},
+    id_slack::Int;
+    tol::Real=1E-6,
+    maxiter::Int=14
+)::Tuple{Array{<:Real,1},Array{<:Real,1},Int}
     #=
     This method is adapted from its version on the
     Pantagruel repository (https://doi.org/10.5281/zenodo.2642175).
@@ -150,12 +161,15 @@ function NRsolver(
     return V, theta, iter
 end
 
+"""
+    find_node(grid_coord::Array{<:Real,2}, disc_coord::Array{<:Real,2})
 
-
-function get_discrete_id(
-    grid_coord::Array{Float64,2},
-    disc_coord::Array{Float64,2},
-)
+Find the the nodes that are closest to given GPS coordinates.
+"""
+function find_node(
+    grid_coord::Array{<:Real,2},
+    disc_coord::Array{<:Real,2}
+)::Array{<:Int,2}
     ids = Int64.(zeros(size(disc_coord, 1)))
     for i in eachindex(ids[:, 1])
         ids[i] = argmin((grid_coord[:, 1] .- disc_coord[i, 1]) .^ 2 +
@@ -165,52 +179,29 @@ function get_discrete_id(
     return ids
 end
 
+"""
+    find_gen(dm::DiscModel, gps_coord::Array{<:Real,2}, dP::Real[, scale_factor::Real=1.0])::Array{<:Int,2}
 
-function get_discrete_values(
-    ids::Vector{Int64},
-    v::Vector{Float64}
-)
-    return [v[ids[i]] for i = 1:length(ids)]
-end
-
-
-function get_discrete_values(
-    grid_coord::Matrix{Float64},
-    disc_coord::Matrix{Float64},
-    v::Vector{Float64}
-)
-    disc_v = zeros(size(disc_coord, 1))
-    for i in eachindex(disc_v[:, 1])
-        id = argmin((grid_coord[:, 1] .- disc_coord[i, 1]) .^ 2 +
-                    (grid_coord[:, 2] .- disc_coord[i, 2]) .^ 2)
-        disc_v[i] = disc_v[i] + v[id] # changed to avoid "Mutating arrays is not supported"
-    end
-    return disc_v
-end
-
-
+Find the generators that are closest to given GPS coordinates and that produce more than
+dP.
+The GPS coordinate is first projected using the Alber projection and then scaled by the given
+scale_factor.
+"""
 function find_gen(
     dm::DiscModel,
-    gps_coord::Array{Float64,2},
-    dP::Float64;
-    scale_factor::Float64=1.0
-)
+    gps_coord::Array{<:Real,2},
+    dP::Real;
+    scale_factor::Real=1.0
+)::Array{<:Int,2}
     #find the the nearest generator that can "withstand" a dP fault
-    coord = albers_projection(gps_coord[:, [2; 1]] ./ (180 / pi))
-    coord = coord[:, [2, 1]] / scale_factor
+    coord = albers_projection(gps_coord[:, [2; 1]] ./ (180 / pi)) / scale_factor
     idprod = findall((dm.p_gen .> 0.0))
-    idavail = findall(dm.max_gen[idprod] .> dP) # find id large gens in the prod list
-    # println(size(idprod))
-    # println(idavail)
-    #idprod = findall((dm.gen .> 0.0))
+    idavail = findall(dm.max_gen[idprod] .> abs(dP)) # find id large gens in the prod list
     id = Int64.(zeros(size(coord, 1)))  # index in the full gen list
-    id2 = Int64.(zeros(size(coord, 1))) # index in the producing gen list
     for i in eachindex(coord[:, 1])
         temp = dm.id_gen[idprod[idavail]]
         id[i] = idprod[idavail[argmin((dm.coord[temp, 1] .- coord[i, 1]) .^ 2 +
                                       (dm.coord[temp, 2] .- coord[i, 2]) .^ 2)]]
-        id2[i] = idavail[argmin((dm.coord[temp, 1] .- coord[i, 1]) .^ 2 +
-                                (dm.coord[temp, 2] .- coord[i, 2]) .^ 2)]
     end
-    return id, id2
+    return dm.id_gen[id, :]
 end
