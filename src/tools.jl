@@ -187,47 +187,19 @@ Load a continuous or discrete model from a jld2 file.
 function from_jld2(fn::String)::Union{ContModel,DiscModel}
     tmp = load(fn)
     if (tmp["type"] == ContModel)
+        tmp["m"] = (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["m_nodal"], :u, extrapolate=extrapolate, warn=warn)
+        tmp["d"] = (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["d_nodal"], :u, extrapolate=extrapolate, warn=warn)
+        tmp["p"] = (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["p_nodal"], :u, extrapolate=extrapolate, warn=warn)
+        tmp["bx"] = (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["bx_nodal"], :u, extrapolate=extrapolate, warn=warn)
+        tmp["by"] = (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["by_nodal"], :u, extrapolate=extrapolate, warn=warn)
+        tmp["θ₀"] = (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["θ₀_nodal"], :u, extrapolate=extrapolate, warn=warn)
+        tmp["fault"] = (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["fault_nodal"], :u, extrapolate=extrapolate, warn=warn)
         return ContModel(
-            tmp["grid"],
-            tmp["dh₁"],
-            tmp["dh₂"],
-            tmp["cellvalues"],
-            tmp["area"],
-            tmp["m_nodal"],
-            tmp["d_nodal"],
-            tmp["p_nodal"],
-            tmp["bx_nodal"],
-            tmp["by_nodal"],
-            tmp["θ₀_nodal"],
-            tmp["fault_nodal"],
-            (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["m_nodal"], :u, extrapolate=extrapolate, warn=warn),
-            (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["d_nodal"], :u, extrapolate=extrapolate, warn=warn),
-            (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["p_nodal"], :u, extrapolate=extrapolate, warn=warn),
-            (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["bx_nodal"], :u, extrapolate=extrapolate, warn=warn),
-            (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["by_nodal"], :u, extrapolate=extrapolate, warn=warn),
-            (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["θ₀_nodal"], :u, extrapolate=extrapolate, warn=warn),
-            (x; extrapolate=true, warn=:semi) -> interpolate(x, tmp["grid"], tmp["dh₁"], tmp["fault_nodal"], :u, extrapolate=extrapolate, warn=warn),
-            tmp["ch"],
-            tmp["K₀"],
-            tmp["f₀"]
+            (tmp[string(key)] for key in fieldnames(tmp["type"]))...
         )
     elseif (tmp["type"] == DiscModel)
         return DiscModel(
-            tmp["m_gen"],
-            tmp["d_gen"],
-            tmp["id_gen"],
-            tmp["id_slack"],
-            tmp["coord"],
-            tmp["d_load"],
-            tmp["id_line"],
-            tmp["b"],
-            tmp["p_load"],
-            tmp["th"],
-            tmp["p_gen"],
-            tmp["max_gen"],
-            tmp["Nbus"],
-            tmp["Ngen"],
-            tmp["Nline"],
+            (tmp[string(key)] for key in fieldnames(tmp["type"]))...
         )
     else
         throw(ArgumentError("The provided file does not have a type entry matching ContGridMod.ContModelFer or ContGridMod.DiscModel"))
