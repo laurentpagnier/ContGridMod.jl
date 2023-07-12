@@ -123,8 +123,6 @@ function get_params(
     add!(ch, gen₀)
     close!(ch)
     update!(ch, 0)
-    K = create_sparsity_pattern(dh₁)
-    f = zeros(ndofs(dh₁))
     θ₀ = zeros(ndofs(dh₁))
     dp = zeros(ndofs(dh₁))
 
@@ -141,16 +139,7 @@ function get_params(
         by,
         θ₀,
         dp,
-        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, m, :u, extrapolate=extrapolate, warn=warn),
-        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, d, :u, extrapolate=extrapolate, warn=warn),
-        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, p, :u, extrapolate=extrapolate, warn=warn),
-        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, bx, :u, extrapolate=extrapolate, warn=warn),
-        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, by, :u, extrapolate=extrapolate, warn=warn),
-        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, θ₀, :u, extrapolate=extrapolate, warn=warn),
-        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, dp, :u, extrapolate=extrapolate, warn=warn),
         ch,
-        K,
-        f,
     )
 end
 

@@ -56,11 +56,68 @@ mutable struct ContModel
     θ₀::Function
     fault::Function
     ch::ConstraintHandler
-    K₀::SparseMatrixCSC
-    f₀::Vector{Float64}
+    ContModel(grid::Grid,
+        dh₁::DofHandler,
+        dh₂::DofHandler,
+        cellvalues::CellScalarValues,
+        area::Float64,
+        m_nodal::Vector{Float64},
+        d_nodal::Vector{Float64},
+        p_nodal::Vector{Float64},
+        bx_nodal::Vector{Float64},
+        by_nodal::Vector{Float64},
+        θ₀_nodal::Vector{Float64},
+        fault_nodal::Vector{Float64},
+        ch::ConstraintHandler) = new(
+        grid,
+        dh₁,
+        dh₂,
+        cellvalues,
+        area,
+        m_nodal,
+        d_nodal,
+        p_nodal,
+        bx_nodal,
+        by_nodal,
+        θ₀_nodal,
+        fault_nodal,
+        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, m_nodal, :u, extrapolate=extrapolate, warn=warn),
+        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, d_nodal, :u, extrapolate=extrapolate, warn=warn),
+        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, p_nodal, :u, extrapolate=extrapolate, warn=warn),
+        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, bx_nodal, :u, extrapolate=extrapolate, warn=warn),
+        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, by_nodal, :u, extrapolate=extrapolate, warn=warn),
+        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, θ₀_nodal, :u, extrapolate=extrapolate, warn=warn),
+        (x; extrapolate=true, warn=:semi) -> interpolate(x, grid, dh₁, fault_nodal, :u, extrapolate=extrapolate, warn=warn),
+        ch
+    )
+    ContModel(; grid::Grid,
+        dh₁::DofHandler,
+        dh₂::DofHandler,
+        cellvalues::CellScalarValues,
+        area::Float64,
+        m_nodal::Vector{Float64},
+        d_nodal::Vector{Float64},
+        p_nodal::Vector{Float64},
+        bx_nodal::Vector{Float64},
+        by_nodal::Vector{Float64},
+        θ₀_nodal::Vector{Float64},
+        fault_nodal::Vector{Float64},
+        ch::ConstraintHandler) = ContModel(grid,
+        dh₁::DofHandler,
+        dh₂,
+        cellvalues,
+        area,
+        m_nodal,
+        d_nodal,
+        p_nodal,
+        bx_nodal,
+        by_nodal,
+        θ₀_nodal,
+        fault_nodal,
+        ch)
 end
 
-include("discrete.jl");
+include("discrete.jl")
 include("disturbances.jl")
 include("dynamics.jl")
 include("mesh.jl")

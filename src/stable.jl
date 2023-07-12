@@ -10,10 +10,7 @@ function stable_sol(model::ContModel)::Vector{Float64}
 end
 
 function stable_sol!(model::ContModel)::Nothing
-    assemble_K₀!(model.K₀, model.f₀, model)
-    apply!(model.K₀, model.f₀, model.ch)
-    model.θ₀_nodal = model.K₀ \ model.f₀
-    model.θ₀ = (x; extrapolate=true, warn=:semi) -> interpolate(x, model.grid, model.dh₁, θ₀, :u, extrapolate=extrapolate, warn=warn)
+    update_model!(model, :θ₀, stable_sol(model))
     return nothing
 end
 
