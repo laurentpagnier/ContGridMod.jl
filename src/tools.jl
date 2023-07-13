@@ -1,4 +1,4 @@
-export update_model!, albers_projection, import_border, to_jld2, from_jld2
+export update_model!, albers_projection, import_border, load_model, save_model
 
 """
     update_model!(model::ContModel, u_name::Symbol, u::Vector{<:Real})::Nothing
@@ -134,7 +134,7 @@ The coordinates need to be given as latitude, longitude.
 """
 function import_border(
     filename::String
-)::Tuple{Array{<:Real,2},Real}
+)::Tuple{Array{<:Real,2},<:Real}
     data = JSON.parsefile(filename)
     N = size(data["border"], 1)
 
@@ -144,7 +144,7 @@ function import_border(
         b[i, 2] = data["border"][i][2] / 180 * pi
     end
 
-    if (b[1, :] != b[end, :])
+    if b[1, :] != b[end, :]
         b = vcat(b, reshape(b[1, :], 1, 2))
     end
 
@@ -159,41 +159,154 @@ end
 """
     to_jld2(fn::String, model::Union{ContModel,DiscModel})::nothing
 
-Save a continuous or discrete model to a jld2 file.
+Save a continuous or discrete model to a hdf5 file.
 """
-function to_jld2(
+function save_model(
     fn::String,
-    model::Union{ContModel,DiscModel}
+    model::GridModel
 )::Nothing
-    tmp = Dict(string(key) => getfield(model, key) for key ∈ fieldnames(typeof(model)))
-    tmp["type"] = typeof(model)
-    if (typeof(model) == ContModel)
-        delete!(tmp, "m")
-        delete!(tmp, "d")
-        delete!(tmp, "p")
-        delete!(tmp, "bx")
-        delete!(tmp, "by")
-        delete!(tmp, "θ₀")
-        delete!(tmp, "fault")
-    end
-    save(fn, tmp)
+    tmp = model_to_dict(model)
+    fid = h5open(fn, "w")
+    dict_to_hdf5(tmp, fid)
+    close(fid)
 end
 
 """
     from_jld2(fn::String)::Union{ContModel, DiscModel}
 
-Load a continuous or discrete model from a jld2 file.
+Load a continuous or discrete model from a hdf5 file.
 """
-function from_jld2(fn::String)::Union{ContModel,DiscModel}
-    tmp = load(fn)
-    if (tmp["type"] == ContModel)
-        delete!(tmp, "model")
-        return ContModel(tmp...)
-    elseif (tmp["type"] == DiscModel)
+function load_model(fn::String)::GridModel
+    tmp = h5open(fn)
+    data = hdf5_to_dict(tmp)
+    close(tmp)
+    if data["model"] == "ContModel"
+        return cont_from_dict(data)
+    elseif data["model"] == "DiscModel"
         return DiscModel(
-            (tmp[string(key)] for key in fieldnames(tmp["type"]))...
+            (data[string(key)] for key in fieldnames(DiscModel))...
         )
     else
-        throw(ArgumentError("The provided file does not have a type entry matching ContGridMod.ContModelFer or ContGridMod.DiscModel"))
+        throw(ArgumentError("The provided file does not have a model entry matching ContModel or DiscModel"))
+    end
+end
+
+function hdf5_to_dict(fid::HDF5.H5DataStore)::Dict{String,<:Any}
+    re = Dict{String,Any}()
+    for k in keys(fid)
+        if typeof(fid[k]) === HDF5.Dataset
+            re[k] = read(fid[k])
+        else
+            re[k] = hdf5_to_dict(fid[k])
+        end
+    end
+    return re
+end
+
+function dict_to_hdf5(data::Dict, fid::HDF5.H5DataStore)::Nothing
+    for (k, i) in data
+        if typeof(i) <: Dict
+            g = create_group(fid, string(k))
+            dict_to_hdf5(i, g)
+        else
+            fid[string(k)] = i
+        end
+    end
+    return nothing
+end
+
+function cont_from_dict(data::Dict{String,<:Any})::ContModel
+    cells = [Cell{data["grid"]["celltype"]...}(Tuple(x)) for x in eachrow(data["grid"]["cells"])]
+    nodes = [Node(Ferrite.Vec(x...)) for x in eachrow(data["grid"]["nodes"])]
+    grid = Grid(cells, nodes)
+    dh₁ = DofHandler(grid)
+    dh₂ = DofHandler(grid)
+    add!(dh₁, :u, eval(Meta.parse(data["dh"]["ui"])))
+    add!(dh₂, :θ, eval(Meta.parse(data["dh"]["ti"])))
+    add!(dh₂, :ω, eval(Meta.parse(data["dh"]["oi"])))
+    close!(dh₁)
+    close!(dh₂)
+    points = [Ferrite.Vec(x...) for x in eachrow(data["cellvalues"]["points"])]
+    qr = eval(Meta.parse(data["cellvalues"]["type"]))(data["cellvalues"]["weights"], points)
+    cv = CellScalarValues(qr, eval(Meta.parse(data["cellvalues"]["ip"])))
+    db = Dirichlet(:u, Set(data["ch"]["slack"]), (x) -> 0)
+    ch = ConstraintHandler(dh₁)
+    add!(ch, db)
+    close!(ch)
+    return ContModel(
+        grid,
+        dh₁,
+        dh₂,
+        cv,
+        data["values"]["area"],
+        data["values"]["m"],
+        data["values"]["d"],
+        data["values"]["p"],
+        data["values"]["bx"],
+        data["values"]["by"],
+        data["values"]["t"],
+        data["values"]["fault"],
+        ch
+    )
+end
+
+function cont_to_dict(cm::ContModel)::Dict{String,<:Any}
+    re = Dict{String,Any}()
+    cells = reduce(vcat, [[x.nodes...]' for x in cm.grid.cells])
+    nodes = reduce(vcat, [[x.x...]' for x in cm.grid.nodes])
+    type = [typeof(cm.grid.cells[1]).parameters...]
+    re["grid"] = Dict{String,Any}()
+    re["grid"]["cells"] = cells
+    re["grid"]["nodes"] = nodes
+    re["grid"]["celltype"] = type
+
+    ui = string(cm.dh₁.field_interpolations[1])
+    ti = string(cm.dh₂.field_interpolations[1])
+    oi = string(cm.dh₂.field_interpolations[2])
+    re["dh"] = Dict{String,Any}()
+    re["dh"]["ui"] = ui
+    re["dh"]["ti"] = ti
+    re["dh"]["oi"] = oi
+
+    type = string(typeof(cm.cellvalues.qr))
+    ip = string(cm.cellvalues.func_interp)
+    weights = cm.cellvalues.qr.weights
+    points = reduce(vcat, [[x.data...]' for x in cm.cellvalues.qr.points])
+    re["cellvalues"] = Dict{String,Any}()
+    re["cellvalues"]["type"] = type
+    re["cellvalues"]["ip"] = ip
+    re["cellvalues"]["points"] = points
+    re["cellvalues"]["weights"] = weights
+
+    slack = cm.ch.dbcs[1].local_face_dofs[1]
+    re["ch"] = Dict{String,Any}()
+    re["ch"]["slack"] = slack
+
+    re["values"] = Dict{String,Any}()
+    re["values"]["area"] = cm.area
+    re["values"]["m"] = cm.m_nodal
+    re["values"]["d"] = cm.d_nodal
+    re["values"]["p"] = cm.p_nodal
+    re["values"]["bx"] = cm.bx_nodal
+    re["values"]["by"] = cm.by_nodal
+    re["values"]["fault"] = cm.fault_nodal
+    re["values"]["t"] = cm.θ₀_nodal
+
+    re["model"] = "ContModel"
+
+    return re
+end
+
+function disc_to_dict(dm::DiscModel)::Dict{String,<:Any}
+    re = Dict(string(key) => getfield(dm, key) for key in fieldnames(DiscModel))
+    re["model"] = "DiscModel"
+    return re
+end
+
+function model_to_dict(model::GridModel)::Dict{String,<:Any}
+    if typeof(model) === ContModel
+        return cont_to_dict(model)
+    else
+        return disc_to_dict(model)
     end
 end

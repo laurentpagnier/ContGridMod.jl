@@ -17,37 +17,39 @@ using Plots
 using SparseArrays
 
 
-mutable struct DiscModel
-    m_gen::Vector{Float64} # generator inertia
-    d_gen::Vector{Float64} # generator damping
-    id_gen::Vector{Int64} # generator inertia
-    id_slack::Int64 # index of the slack bus
-    coord::Matrix{Float64} # coordinates in 
-    d_load::Vector{Float64}
-    id_line::Matrix{Int64} # list of indices
-    b::Vector{Float64} # susceptance
-    p_load::Vector{Float64}
-    th::Vector{Float64}
-    p_gen::Vector{Float64}
-    max_gen::Vector{Float64}
-    Nbus::Int64
-    Ngen::Int64
-    Nline::Int64
+abstract type GridModel end
+
+mutable struct DiscModel <: GridModel
+    m_gen::Vector{<:Real}
+    d_gen::Vector{<:Real}
+    id_gen::Vector{<:Int}
+    id_slack::Int
+    coord::Matrix{<:Real}
+    d_load::Vector{<:Real}
+    id_line::Matrix{Int}
+    b::Vector{<:Real}
+    p_load::Vector{<:Real}
+    th::Vector{<:Real}
+    p_gen::Vector{<:Real}
+    max_gen::Vector{<:Real}
+    Nbus::Int
+    Ngen::Int
+    Nline::Int
 end
 
-mutable struct ContModel
+mutable struct ContModel <: GridModel
     grid::Grid
     dh₁::DofHandler
     dh₂::DofHandler
     cellvalues::CellScalarValues
-    area::Float64
-    m_nodal::Vector{Float64}
-    d_nodal::Vector{Float64}
-    p_nodal::Vector{Float64}
-    bx_nodal::Vector{Float64}
-    by_nodal::Vector{Float64}
-    θ₀_nodal::Vector{Float64}
-    fault_nodal::Vector{Float64}
+    area::Real
+    m_nodal::Vector{<:Real}
+    d_nodal::Vector{<:Real}
+    p_nodal::Vector{<:Real}
+    bx_nodal::Vector{<:Real}
+    by_nodal::Vector{<:Real}
+    θ₀_nodal::Vector{<:Real}
+    fault_nodal::Vector{<:Real}
     m::Function
     d::Function
     p::Function
@@ -56,18 +58,19 @@ mutable struct ContModel
     θ₀::Function
     fault::Function
     ch::ConstraintHandler
-    ContModel(grid::Grid,
+    ContModel(
+        grid::Grid,
         dh₁::DofHandler,
         dh₂::DofHandler,
         cellvalues::CellScalarValues,
-        area::Float64,
-        m_nodal::Vector{Float64},
-        d_nodal::Vector{Float64},
-        p_nodal::Vector{Float64},
-        bx_nodal::Vector{Float64},
-        by_nodal::Vector{Float64},
-        θ₀_nodal::Vector{Float64},
-        fault_nodal::Vector{Float64},
+        area::Real,
+        m_nodal::Vector{<:Real},
+        d_nodal::Vector{<:Real},
+        p_nodal::Vector{<:Real},
+        bx_nodal::Vector{<:Real},
+        by_nodal::Vector{<:Real},
+        θ₀_nodal::Vector{<:Real},
+        fault_nodal::Vector{<:Real},
         ch::ConstraintHandler) = new(
         grid,
         dh₁,
@@ -94,14 +97,14 @@ mutable struct ContModel
         dh₁::DofHandler,
         dh₂::DofHandler,
         cellvalues::CellScalarValues,
-        area::Float64,
-        m_nodal::Vector{Float64},
-        d_nodal::Vector{Float64},
-        p_nodal::Vector{Float64},
-        bx_nodal::Vector{Float64},
-        by_nodal::Vector{Float64},
-        θ₀_nodal::Vector{Float64},
-        fault_nodal::Vector{Float64},
+        area::Real,
+        m_nodal::Vector{<:Real},
+        d_nodal::Vector{<:Real},
+        p_nodal::Vector{<:Real},
+        bx_nodal::Vector{<:Real},
+        by_nodal::Vector{<:Real},
+        θ₀_nodal::Vector{<:Real},
+        fault_nodal::Vector{<:Real},
         ch::ConstraintHandler) = ContModel(grid,
         dh₁::DofHandler,
         dh₂,
