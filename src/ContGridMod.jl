@@ -14,6 +14,7 @@ using JSON
 using LinearAlgebra
 using Plots
 using SparseArrays
+using LaTeXStrings
 
 
 abstract type GridModel end
