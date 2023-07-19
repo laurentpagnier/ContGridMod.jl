@@ -20,7 +20,7 @@ function disc_dynamics(
     maxiter::Int=30,  # Maximum iteration for the Newton-Raphson solver
     dmin::Real=1e-4,  # Minimum amount of damping for load buses
     alg::OrdinaryDiffEqAlgorithm=TRBDF2(),  # The solver that is passed to the solve function
-    solve_kwargs::Dict{String,Any}=Dict{String,Any}()  # Keyword arguments to the solve function
+    solve_kwargs::Dict{Symbol,<:Any}=Dict{Symbol,Any}()  # Keyword arguments to the solve function
 )::ODESolution
     if (faultid == 0 && size(delta_p, 1) != dm.Nbus)
         if (all(isnan.(coords)) || scale_factor == 0.0)
@@ -102,7 +102,7 @@ function disc_dynamics(
     # solve the swing equations
     func = ODEFunction(swing!, jac=jacobian!, jac_prototype=jac_proto)
     prob = ODEProblem(func, u0, tspan)
-    sol = solve(prob, alg, tstops=tt, solve_kwargs...)
+    sol = solve(prob, alg, tstops=tt; solve_kwargs...)
     return sol
 end
 
