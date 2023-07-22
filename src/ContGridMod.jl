@@ -5,14 +5,11 @@ using DifferentialEquations
 using Ferrite
 using FerriteGmsh
 using FerriteViz
-using FileIO
 using CairoMakie
 using Gmsh
 using HDF5
-using IterativeSolvers
 using JSON
 using LinearAlgebra
-using Plots
 using SparseArrays
 using LaTeXStrings
 
